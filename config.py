@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     
     # Server Configuration
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = int(os.getenv("PORT", "8000"))  # Properly handle Railway's PORT
     ALLOWED_ORIGINS: List[str] = ["*"]  # Configure for production
     
     # Database Configuration
