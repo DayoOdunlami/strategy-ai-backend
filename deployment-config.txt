@@ -1,0 +1,420 @@
+# railway.json - Railway Deployment Configuration
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pip install -r requirements.txt && playwright install chromium"
+  },
+  "deploy": {
+    "startCommand": "uvicorn main:app --host 0.0.0.0 --port $PORT",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "ENVIRONMENT": "production",
+        "LOG_LEVEL": "WARNING"
+      }
+    }
+  }
+}
+
+---
+
+# docker-compose.yml - Local Development Setup
+version: '3.8'
+
+services:
+  # FastAPI Backend
+  strategy-ai-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ADMIN_API_KEY=${ADMIN_API_KEY}
+    volumes:
+      - .:/app
+      - /tmp:/tmp
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  # Redis for task queue (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # PostgreSQL for local development (optional - use if not using Supabase)
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: strategy_ai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+---
+
+# Dockerfile - Production Container
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Playwright browsers
+RUN playwright install chromium
+RUN playwright install-deps
+
+# Copy application code
+COPY . .
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Start command
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+---
+
+# .env.example - Environment Variables Template
+# Copy this to .env and fill in your values
+
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your-service-key-here
+
+# ============================================================================
+# VECTOR STORE CONFIGURATION  
+# ============================================================================
+PINECONE_API_KEY=your-pinecone-api-key
+PINECONE_INDEX_NAME=strategy-docs
+PINECONE_ENVIRONMENT=us-east-1
+
+# ============================================================================
+# AI SERVICES CONFIGURATION
+# ============================================================================
+OPENAI_API_KEY=sk-your-openai-key-here
+AI_MODEL_NAME=gpt-4o-mini
+EMBEDDING_MODEL_NAME=text-embedding-ada-002
+AI_TEMPERATURE=0.2
+
+# ============================================================================
+# ADMIN & SECURITY
+# ============================================================================
+ADMIN_API_KEY=your-secure-admin-key-here
+SECRET_KEY=your-secret-key-for-jwt
+
+# ============================================================================
+# APPLICATION SETTINGS
+# ============================================================================
+ENVIRONMENT=development
+DEBUG=true
+LOG_LEVEL=INFO
+HOST=0.0.0.0
+PORT=8000
+
+# ============================================================================
+# CORS & SECURITY SETTINGS
+# ============================================================================
+ALLOWED_ORIGINS=["http://localhost:3000","http://localhost:3001","https://your-v0-app.vercel.app"]
+API_RATE_LIMIT=100/minute
+
+# ============================================================================
+# FILE PROCESSING SETTINGS
+# ============================================================================
+MAX_FILE_SIZE_MB=50
+TEMP_UPLOAD_DIR=/tmp
+DEFAULT_CHUNK_SIZE=1000
+DEFAULT_CHUNK_OVERLAP=200
+
+# ============================================================================
+# WEB SCRAPING SETTINGS
+# ============================================================================
+MAX_SCRAPING_PAGES=50
+SCRAPING_TIMEOUT_SECONDS=30
+SCRAPING_DELAY_MS=1000
+
+# ============================================================================
+# OPTIONAL: REDIS FOR TASK QUEUE
+# ============================================================================
+REDIS_URL=redis://localhost:6379/0
+
+---
+
+# .dockerignore - Files to exclude from Docker build
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.env
+.env.local
+.env.production
+node_modules/
+.git/
+.gitignore
+README.md
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+dist/
+build/
+*.egg-info/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+---
+
+# .gitignore - Git ignore patterns  
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files (development)
+uploads/
+static/uploads/
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
+---
+
+# github/workflows/deploy.yml - GitHub Actions CI/CD
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        playwright install chromium
+    
+    - name: Run tests
+      run: |
+        pytest tests/ -v
+      env:
+        SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+        SUPABASE_SERVICE_KEY: ${{ secrets.TEST_SUPABASE_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to Railway
+      uses: railway-app/deploy@v1
+      with:
+        railway-token: ${{ secrets.RAILWAY_TOKEN }}
+        service: strategy-ai-backend
+
+---
+
+# scripts/setup.sh - Setup Script
+#!/bin/bash
+
+# Strategy AI Backend Setup Script
+
+echo "🚀 Setting up Strategy AI Backend..."
+
+# Check if Python 3.11+ is installed
+python_version=$(python3 --version 2>&1 | grep -o '[0-9]\+\.[0-9]\+')
+if [[ $(echo "$python_version >= 3.11" | bc -l) -eq 0 ]]; then
+    echo "❌ Python 3.11+ is required. Current version: $python_version"
+    exit 1
+fi
+
+echo "✅ Python version check passed"
+
+# Create virtual environment
+echo "📦 Creating virtual environment..."
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+echo "📦 Installing Python dependencies..."
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Install Playwright browsers
+echo "🎭 Installing Playwright browsers..."
+playwright install chromium
+
+# Copy environment file
+if [ ! -f .env ]; then
+    echo "📋 Creating .env file from template..."
+    cp .env.example .env
+    echo "⚠️  Please edit .env file with your API keys and configuration"
+else
+    echo "✅ .env file already exists"
+fi
+
+# Create necessary directories
+echo "📁 Creating directories..."
+mkdir -p tmp
+mkdir -p logs
+mkdir -p uploads
+
+echo "🎉 Setup complete!"
+echo ""
+echo "Next steps:"
+echo "1. Edit .env file with your API keys"
+echo "2. Set up Supabase database using schema.sql"
+echo "3. Run: uvicorn main:app --reload"
+echo ""
+echo "🔗 API will be available at: http://localhost:8000"
+echo "📚 API docs will be at: http://localhost:8000/docs"
