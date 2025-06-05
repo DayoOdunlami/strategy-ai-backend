@@ -572,15 +572,17 @@ async def generate_report_stream(
                     report_content[section] = section_content
                     
                     # Send section content
-                    yield f"data: {json.dumps({
+                    message = {
                         'status': 'section_complete',
                         'section': section,
                         'content': section_content,
                         'progress': progress
-                    })}\n\n"
+                    }
+                    yield f"data: {json.dumps(message)}\n\n"
 
                 except Exception as e:
-                    yield f"data: {json.dumps({'error': f'Error generating section {section}: {str(e)}'})}\n\n"
+                    error_message = {'error': f'Error generating section {section}: {str(e)}'}
+                    yield f"data: {json.dumps(error_message)}\n\n"
 
             # Generate final documents
             try:
@@ -621,17 +623,20 @@ async def generate_report_stream(
                 await report_generator._save_report_metadata(report_id, metadata)
 
                 # Send completion status with download URLs
-                yield f"data: {json.dumps({
+                completion_message = {
                     'status': 'complete',
                     'report_id': report_id,
                     'download_urls': [f"/api/reports/{report_id}/download/{file['filename']}" for file in generated_files]
-                })}\n\n"
+                }
+                yield f"data: {json.dumps(completion_message)}\n\n"
 
             except Exception as e:
-                yield f"data: {json.dumps({'error': f'Error finalizing report: {str(e)}'})}\n\n"
+                error_message = {'error': f'Error finalizing report: {str(e)}'}
+                yield f"data: {json.dumps(error_message)}\n\n"
 
         except Exception as e:
-            yield f"data: {json.dumps({'error': f'Error in report generation: {str(e)}'})}\n\n"
+            error_message = {'error': f'Error in report generation: {str(e)}'}
+            yield f"data: {json.dumps(error_message)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
