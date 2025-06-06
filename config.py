@@ -27,9 +27,11 @@ class Settings(BaseSettings):
     
     # Optional AI Services Configuration (for future use)
     OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
     AI_MODEL_NAME: str = "gpt-4o-mini"
     EMBEDDING_MODEL_NAME: str = "text-embedding-ada-002"
     AI_TEMPERATURE: float = 0.2
+    PREFERRED_AI_MODEL: str = "auto"  # auto, openai, claude
     
     # Admin Configuration
     ADMIN_API_KEY: str = "admin-secret-key-change-in-production"

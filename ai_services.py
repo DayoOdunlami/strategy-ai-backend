@@ -1,8 +1,7 @@
-# ai_services.py - AI Services Manager (OpenAI Integration)
+# ai_services.py - Multi-Model AI Services Manager (OpenAI + Claude)
 import asyncio
 from typing import Dict, List, Optional, Any
 import logging
-import openai
 import json
 from config import Settings
 
@@ -10,78 +9,105 @@ logger = logging.getLogger(__name__)
 
 class AIService:
     """
-    AI services manager that handles all OpenAI interactions
+    Multi-model AI services manager that supports OpenAI and Claude
     """
     
     def __init__(self):
         self.settings = Settings()
-        self.openai_api_key = getattr(self.settings, 'OPENAI_API_KEY', None)
+        self.demo_mode = True
+        self.available_models = []
         
-        if not self.openai_api_key:
-            logger.warning("OPENAI_API_KEY not set, using demo mode")
-            self.demo_mode = True
-            return
+        # Try to initialize OpenAI
+        self._init_openai()
         
-        try:
-            self.client = openai.OpenAI(api_key=self.openai_api_key)
-            self.model_name = getattr(self.settings, 'AI_MODEL_NAME', 'gpt-3.5-turbo')
-            self.temperature = getattr(self.settings, 'AI_TEMPERATURE', 0.7)
+        # Try to initialize Claude
+        self._init_claude()
+        
+        # Set default model
+        if self.available_models:
             self.demo_mode = False
-            
-            logger.info(f"Initialized AI service with model: {self.model_name}")
-        except Exception as e:
-            logger.error(f"Failed to initialize OpenAI client: {e}")
-            logger.warning("Falling back to demo mode due to OpenAI client error")
-            self.demo_mode = True
-            self.model_name = "demo"
+            self.current_model = self.available_models[0]
+            logger.info(f"AI service initialized with models: {self.available_models}")
+        else:
+            logger.warning("No AI models available, using demo mode")
+            self.current_model = "demo"
 
-    async def detect_use_case(self, query: str, sector: str) -> str:
-        """
-        Intelligently detect the best use case for a query
-        """
+    def _init_openai(self):
+        """Initialize OpenAI client"""
+        try:
+            import openai
+            
+            openai_key = getattr(self.settings, 'OPENAI_API_KEY', None)
+            if openai_key:
+                # OpenAI 0.28.1 uses different syntax
+                openai.api_key = openai_key
+                
+                # Test the connection
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": "test"}],
+                    max_tokens=1
+                )
+                
+                self.available_models.append("openai")
+                self.openai = openai
+                logger.info("OpenAI initialized successfully")
+        except Exception as e:
+            logger.warning(f"OpenAI initialization failed: {e}")
+
+    def _init_claude(self):
+        """Initialize Claude (Anthropic) client"""
+        try:
+            import anthropic
+            
+            claude_key = getattr(self.settings, 'ANTHROPIC_API_KEY', None)
+            if claude_key:
+                self.anthropic_client = anthropic.Anthropic(api_key=claude_key)
+                
+                # Test the connection
+                response = self.anthropic_client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=1,
+                    messages=[{"role": "user", "content": "test"}]
+                )
+                
+                self.available_models.append("claude")
+                logger.info("Claude initialized successfully")
+        except Exception as e:
+            logger.warning(f"Claude initialization failed: {e}")
+
+    async def detect_use_case(self, query: str, sector: str, model: str = None) -> str:
+        """Intelligently detect the best use case for a query"""
         if self.demo_mode:
             return f"{sector} Analysis" if sector != "General" else "Quick Playbook Answers"
         
+        use_cases = [
+            "Quick Playbook Answers", "Lessons Learned", "Project Review / MOT",
+            "TRL / RIRL Mapping", "Project Similarity", "Change Management", "Product Acceptance"
+        ]
+        
+        prompt = f"""
+        Analyze this user query and suggest the most appropriate use case for the {sector} sector.
+        
+        Available use cases:
+        1. Quick Playbook Answers - Direct questions about processes, guidelines, standards
+        2. Lessons Learned - Learning from past projects, experiences, insights
+        3. Project Review / MOT - Health checks, status reviews, assessments
+        4. TRL / RIRL Mapping - Technology readiness assessments
+        5. Project Similarity - Finding similar past projects, comparisons
+        6. Change Management - Transitions, handovers, organizational changes
+        7. Product Acceptance - Approval processes, compliance, governance
+        
+        User query: "{query}"
+        Sector: {sector}
+        
+        Return ONLY the exact use case name that best matches.
+        """
+        
         try:
-            prompt = f"""
-            Analyze this user query and suggest the most appropriate use case for the {sector} sector.
-            
-            Available use cases:
-            1. Quick Playbook Answers - Direct questions about processes, guidelines, standards
-            2. Lessons Learned - Learning from past projects, experiences, insights
-            3. Project Review / MOT - Health checks, status reviews, assessments
-            4. TRL / RIRL Mapping - Technology readiness assessments
-            5. Project Similarity - Finding similar past projects, comparisons
-            6. Change Management - Transitions, handovers, organizational changes
-            7. Product Acceptance - Approval processes, compliance, governance
-            
-            User query: "{query}"
-            Sector: {sector}
-            
-            Return ONLY the exact use case name that best matches.
-            If unclear, default to "Quick Playbook Answers".
-            """
-            
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=50
-            )
-            
-            detected_use_case = response.choices[0].message.content.strip()
-            
-            # Validate against known use cases
-            valid_use_cases = [
-                "Quick Playbook Answers", "Lessons Learned", "Project Review / MOT",
-                "TRL / RIRL Mapping", "Project Similarity", "Change Management", "Product Acceptance"
-            ]
-            
-            if detected_use_case in valid_use_cases:
-                return detected_use_case
-            else:
-                return "Quick Playbook Answers"
-                
+            response = await self._make_ai_request(prompt, model or self.current_model, max_tokens=50)
+            detected = response.strip()
+            return detected if detected in use_cases else "Quick Playbook Answers"
         except Exception as e:
             logger.error(f"Error detecting use case: {e}")
             return "Quick Playbook Answers"
@@ -91,44 +117,41 @@ class AIService:
         query: str,
         sector: str = "General",
         use_case: Optional[str] = None,
-        user_type: str = "public"
+        user_type: str = "public",
+        model: str = None
     ) -> Dict[str, Any]:
-        """
-        Generate AI response for chat
-        """
+        """Generate AI response for chat"""
+        
         if self.demo_mode:
             return {
-                "response": f"[DEMO MODE] I received your message about '{query[:50]}...' in the {sector} sector. To enable real AI responses, please set your OPENAI_API_KEY environment variable.",
+                "response": f"[DEMO MODE] I received your message about '{query[:50]}...' in the {sector} sector. To enable real AI responses, please set your OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.",
                 "confidence": 0.5,
                 "sources": [{"title": "Demo Mode Active", "relevance": 1.0}],
-                "suggested_use_case": use_case or f"{sector} Analysis" if sector != "General" else None
+                "suggested_use_case": use_case or f"{sector} Analysis" if sector != "General" else None,
+                "model_used": "demo"
             }
         
         try:
             # Detect use case if not provided
             if not use_case:
-                use_case = await self.detect_use_case(query, sector)
+                use_case = await self.detect_use_case(query, sector, model)
             
-            # Create specialized prompt based on sector and use case
+            # Create specialized prompt
             prompt = self._create_sector_prompt(query, sector, use_case, user_type)
             
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=self.temperature,
-                max_tokens=800
-            )
+            # Generate response with selected model
+            selected_model = model or self.current_model
+            ai_response = await self._make_ai_request(prompt, selected_model, max_tokens=800)
             
-            ai_response = response.choices[0].message.content
-            
-            # Calculate confidence based on response quality
+            # Calculate confidence
             confidence = self._calculate_response_confidence(ai_response, query)
             
             return {
                 "response": ai_response,
                 "confidence": confidence,
                 "sources": self._generate_mock_sources(sector, use_case),
-                "suggested_use_case": use_case
+                "suggested_use_case": use_case,
+                "model_used": selected_model
             }
             
         except Exception as e:
@@ -137,8 +160,32 @@ class AIService:
                 "response": f"I apologize, but I'm experiencing technical difficulties. Please try again later. (Error: {str(e)})",
                 "confidence": 0.0,
                 "sources": [],
-                "suggested_use_case": use_case
+                "suggested_use_case": use_case,
+                "model_used": model or "error"
             }
+
+    async def _make_ai_request(self, prompt: str, model: str, max_tokens: int = 800) -> str:
+        """Make AI request to specified model"""
+        
+        if model == "openai":
+            response = self.openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+            
+        elif model == "claude":
+            response = self.anthropic_client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.content[0].text
+            
+        else:
+            raise ValueError(f"Unsupported model: {model}")
 
     def _create_sector_prompt(self, query: str, sector: str, use_case: str, user_type: str) -> str:
         """Create specialized prompt based on sector and use case"""
@@ -181,47 +228,25 @@ class AIService:
             technology adoption, and organizational transformation.
             """
         
-        use_case_guidance = self._get_use_case_guidance(use_case)
-        
-        full_prompt = f"""
+        return f"""
         {base_context}
         
         {sector_context}
-        
-        {use_case_guidance}
         
         User Question: {query}
         
         Please provide a detailed, helpful response that addresses their specific needs.
         """
-        
-        return full_prompt
-
-    def _get_use_case_guidance(self, use_case: str) -> str:
-        """Get specific guidance based on use case"""
-        guidance_map = {
-            "Quick Playbook Answers": "Focus on providing direct, actionable guidance from best practices and established frameworks.",
-            "Lessons Learned": "Emphasize insights from past projects, what worked well, what didn't, and key takeaways.",
-            "Project Review / MOT": "Provide structured assessment criteria, health check frameworks, and evaluation methodologies.",
-            "TRL / RIRL Mapping": "Focus on technology and innovation readiness levels, maturity assessments, and scaling considerations.",
-            "Project Similarity": "Compare and contrast with similar initiatives, highlighting relevant parallels and differences.",
-            "Change Management": "Address organizational transformation, stakeholder engagement, and transition strategies.",
-            "Product Acceptance": "Focus on approval processes, compliance requirements, and governance frameworks."
-        }
-        
-        return guidance_map.get(use_case, "Provide comprehensive strategic guidance.")
 
     def _calculate_response_confidence(self, response: str, query: str) -> float:
         """Calculate confidence score based on response quality"""
-        confidence = 0.8  # Base confidence
+        confidence = 0.8
         
-        # Adjust based on response length and detail
         if len(response) < 100:
             confidence -= 0.2
         elif len(response) > 500:
             confidence += 0.1
         
-        # Check for specific keywords that indicate good responses
         quality_indicators = [
             "strategy", "framework", "approach", "recommend", "suggest",
             "analysis", "assessment", "evaluation", "implementation",
@@ -230,44 +255,35 @@ class AIService:
         
         found_indicators = sum(1 for indicator in quality_indicators 
                              if indicator.lower() in response.lower())
-        
         confidence += min(found_indicators * 0.02, 0.1)
         
-        return min(confidence, 0.95)  # Cap at 95%
+        return min(confidence, 0.95)
 
     def _generate_mock_sources(self, sector: str, use_case: str) -> List[Dict[str, Any]]:
-        """Generate realistic mock sources based on sector and use case"""
-        sources = []
-        
+        """Generate realistic mock sources"""
         if sector.lower() == "transport":
-            sources.extend([
+            return [
                 {"title": f"{sector} Strategy Framework 2024", "relevance": 0.92},
                 {"title": f"Connected Places Catapult {use_case} Guide", "relevance": 0.88},
                 {"title": f"UK {sector} Innovation Roadmap", "relevance": 0.85}
-            ])
+            ]
         else:
-            sources.extend([
+            return [
                 {"title": f"{sector} Policy Guidelines", "relevance": 0.90},
                 {"title": f"Strategic {use_case} Framework", "relevance": 0.87},
                 {"title": f"{sector} Best Practices Compendium", "relevance": 0.84}
-            ])
-        
-        return sources
+            ]
 
-    async def validate_api_key(self) -> bool:
-        """Validate OpenAI API key"""
-        if self.demo_mode:
-            return False
-        
-        try:
-            self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": "test"}],
-                max_tokens=1
-            )
+    def get_available_models(self) -> List[str]:
+        """Get list of available models"""
+        return self.available_models if not self.demo_mode else ["demo"]
+
+    def set_model(self, model: str) -> bool:
+        """Set the current model"""
+        if model in self.available_models:
+            self.current_model = model
             return True
-        except Exception:
-            return False
+        return False
 
 # Global AI service instance
 ai_service = AIService() 

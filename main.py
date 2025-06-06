@@ -363,12 +363,28 @@ async def get_system_settings(current_user: dict = Depends(get_current_user)):
 @app.get("/ai/status")
 async def get_ai_status():
     """Get AI service status"""
+    available_models = ai_service.get_available_models()
     return {
         "ai_enabled": not ai_service.demo_mode,
-        "model_name": ai_service.model_name if not ai_service.demo_mode else "demo",
+        "available_models": available_models,
+        "current_model": ai_service.current_model,
+        "demo_mode": ai_service.demo_mode,
         "status": "operational" if not ai_service.demo_mode else "demo_mode",
-        "message": "Real AI responses enabled" if not ai_service.demo_mode else "Demo mode - set OPENAI_API_KEY to enable real AI"
+        "message": f"AI enabled with models: {available_models}" if not ai_service.demo_mode else "Demo mode - set OPENAI_API_KEY or ANTHROPIC_API_KEY to enable real AI"
     }
+
+@app.post("/ai/model")
+async def set_ai_model(model_data: dict, current_user: dict = Depends(get_current_user)):
+    """Set the current AI model"""
+    model = model_data.get("model")
+    if ai_service.set_model(model):
+        return {"success": True, "current_model": model, "message": f"Model set to {model}"}
+    else:
+        available = ai_service.get_available_models()
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid model '{model}'. Available models: {available}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
