@@ -1,23 +1,21 @@
-# database.py - Enhanced Database Manager for Multi-Agent Strategy AI
+# database.py - Database Manager for Multi-Agent Strategy AI (Demo Mode)
 import asyncio
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import json
 import uuid
-from config import Settings
 
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     """
-    Enhanced database manager for multi-agent Strategy AI system
-    Handles documents, feedback, analytics, and system data
+    Database manager for multi-agent Strategy AI system
+    Currently in demo mode with mock data
     """
     
     def __init__(self):
-        self.settings = Settings()
-        self.demo_mode = True  # Start in demo mode, enable with real DB
+        self.demo_mode = True
         self.mock_data = self._initialize_mock_data()
         logger.info("Database manager initialized in demo mode")
 
@@ -42,16 +40,7 @@ class DatabaseManager:
 
     async def test_connection(self) -> bool:
         """Test database connection"""
-        try:
-            # In real implementation, test actual database
-            return True
-        except Exception as e:
-            logger.error(f"Database connection test failed: {e}")
-            return False
-
-    # ============================================================================
-    # DOCUMENT MANAGEMENT
-    # ============================================================================
+        return True
 
     async def store_document(
         self,
@@ -73,8 +62,8 @@ class DatabaseManager:
             "use_case": use_case,
             "source_type": source_type,
             "source_url": source_url,
-            "status": "processing",
-            "chunk_count": 0,
+            "status": "completed",  # Demo mode - always completed
+            "chunk_count": 5,  # Mock chunk count
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
             "metadata": metadata or {},
@@ -136,10 +125,6 @@ class DatabaseManager:
             del self.mock_data["documents"][document_id]
             return True
         return False
-
-    # ============================================================================
-    # FEEDBACK MANAGEMENT
-    # ============================================================================
 
     async def store_feedback(
         self,
@@ -212,10 +197,6 @@ class DatabaseManager:
             "feedback_trends": {}
         }
 
-    # ============================================================================
-    # CHAT LOGS
-    # ============================================================================
-
     async def log_chat_interaction(
         self,
         message: str,
@@ -263,10 +244,6 @@ class DatabaseManager:
         logs.sort(key=lambda x: x["timestamp"], reverse=True)
         return logs[:limit]
 
-    # ============================================================================
-    # SECTORS & USE CASES
-    # ============================================================================
-
     async def get_sectors(self) -> List[Dict[str, Any]]:
         """Get all sectors"""
         return list(self.mock_data["sectors"].values())
@@ -282,10 +259,6 @@ class DatabaseManager:
         """Get custom prompt template"""
         template_key = f"{sector}_{use_case}".lower()
         return self.mock_data["prompt_templates"].get(template_key)
-
-    # ============================================================================
-    # ANALYTICS & METRICS
-    # ============================================================================
 
     async def get_document_count(self) -> int:
         """Get total document count"""
