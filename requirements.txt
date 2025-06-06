@@ -1,10 +1,48 @@
+# FastAPI Backend Requirements - Strategy AI Enhanced Multi-Agent Version
+# Core Framework
 fastapi==0.104.1
+fastapi-utils==0.2.1
 uvicorn[standard]==0.24.0
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
 pydantic==2.5.0
 pydantic-settings==2.0.3
-python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# Database & Storage
+supabase==2.3.0
+pinecone-client==3.0.0
+
+# AI & ML - Multi-Model Support
 openai==0.28.1
-anthropic==0.8.1 
+anthropic==0.8.1
+tiktoken==0.5.2
+
+# Security & Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+
+# Utilities & HTTP
+requests==2.31.0
+httpx==0.25.2
+
+# Report Generation (PDF/DOCX)
+reportlab==4.0.4
+
+# Web Scraping
+beautifulsoup4==4.12.2
+
+# System Monitoring
+psutil==5.9.0
+
+# Data Processing
+numpy==1.24.3
+pandas==2.0.3
+Pillow==10.1.0
+python-dateutil==2.8.2
+
+# WebSockets & Real-time
+websockets==11.0.3
+
+# Development & Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1 
