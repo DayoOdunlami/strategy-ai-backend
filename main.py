@@ -12,7 +12,25 @@ import io
 from pathlib import Path
 import json
 import time
-import psutil
+# Try to import optional dependencies
+try:
+    import psutil
+    psutil_available = True
+except ImportError:
+    psutil_available = False
+    # Create mock psutil for fallback
+    class MockProcess:
+        def cpu_percent(self): return 0.0
+        def memory_info(self): 
+            class MockMemory:
+                rss = 1024 * 1024 * 100  # 100MB
+            return MockMemory()
+        def num_threads(self): return 1
+    
+    class MockPsutil:
+        def Process(self): return MockProcess()
+    
+    psutil = MockPsutil()
 
 # Import our custom modules with error handling
 from config import Settings
@@ -166,9 +184,24 @@ async def health_check():
         db_status = await db_manager.test_connection()
         vector_status = await vector_store.test_connection()
         
-        # Get system metrics
-        process = psutil.Process()
-        memory_info = process.memory_info()
+        # Get system metrics (if psutil available)
+        if psutil_available:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            system_metrics = {
+                "cpu_percent": process.cpu_percent(),
+                "memory_used_mb": memory_info.rss / 1024 / 1024,
+                "threads": process.num_threads(),
+                "uptime_seconds": int(time.time() - getattr(app.state, 'start_time', time.time()))
+            }
+        else:
+            system_metrics = {
+                "cpu_percent": 0.0,
+                "memory_used_mb": 100.0,
+                "threads": 1,
+                "uptime_seconds": int(time.time() - getattr(app.state, 'start_time', time.time())),
+                "note": "System monitoring disabled (psutil not available)"
+            }
         
         # Get database metrics
         doc_count = await db_manager.get_document_count()
@@ -189,12 +222,7 @@ async def health_check():
                 "document_processor": "ready",
                 "feedback_system": "enabled"
             },
-            "system": {
-                "cpu_percent": process.cpu_percent(),
-                "memory_used_mb": memory_info.rss / 1024 / 1024,
-                "threads": process.num_threads(),
-                "uptime_seconds": int(time.time() - getattr(app.state, 'start_time', time.time()))
-            },
+            "system": system_metrics,
             "metrics": {
                 "total_documents": doc_count,
                 "total_sectors": sector_count,
