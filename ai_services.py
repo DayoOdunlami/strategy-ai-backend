@@ -58,21 +58,9 @@ class AIService:
     def _init_claude(self):
         """Initialize Claude (Anthropic) client"""
         try:
-            import anthropic
-            
-            claude_key = getattr(self.settings, 'ANTHROPIC_API_KEY', None)
-            if claude_key:
-                self.anthropic_client = anthropic.Anthropic(api_key=claude_key)
-                
-                # Test the connection
-                response = self.anthropic_client.messages.create(
-                    model="claude-3-haiku-20240307",
-                    max_tokens=1,
-                    messages=[{"role": "user", "content": "test"}]
-                )
-                
-                self.available_models.append("claude")
-                logger.info("Claude initialized successfully")
+            # Skip Claude for minimal deployment
+            logger.info("Claude support disabled for minimal deployment")
+            return
         except Exception as e:
             logger.warning(f"Claude initialization failed: {e}")
 
