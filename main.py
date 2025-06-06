@@ -706,6 +706,111 @@ async def get_feedback_analytics(
         raise HTTPException(status_code=500, detail=f"Failed to get feedback analytics: {e}")
 
 # ============================================================================
+# CONTEXTUAL CHAT ENDPOINT
+# ============================================================================
+
+class ContextualChatMessage(BaseModel):
+    message: str
+    context: str
+
+@app.post("/api/chat/contextual")
+async def contextual_chat(message: ContextualChatMessage):
+    """Contextual chat endpoint for frontend components"""
+    try:
+        # Map context to appropriate agent specialization
+        context_map = {
+            "documents": "Document analysis and metadata extraction",
+            "upload": "Document processing optimization", 
+            "domains": "Domain and use case management",
+            "map": "Geographic and network analysis",
+            "insights": "Data analysis and insights generation",
+            "analytics": "Performance metrics and reporting",
+            "settings": "System configuration and optimization"
+        }
+        
+        # Determine sector and use case based on context
+        sector_map = {
+            "documents": "General",
+            "upload": "General", 
+            "domains": "General",
+            "map": "Rail",
+            "insights": "Analytics",
+            "analytics": "Analytics",
+            "settings": "System"
+        }
+        
+        context_lower = message.context.lower()
+        sector = sector_map.get(context_lower, "General")
+        specialization = context_map.get(context_lower, "General assistance")
+        
+        # Create agent request
+        agent_request = {
+            "query": message.message,
+            "sector": sector,
+            "use_case": "Contextual Chat",
+            "context": message.context,
+            "specialization": specialization,
+            "user_type": "contextual"
+        }
+        
+        # Use orchestration agent to process contextual request
+        response = await orchestration_agent.process(agent_request)
+        
+        # Generate contextual actions based on context and response
+        actions = generate_contextual_actions(message.context, message.message, response)
+        
+        return {
+            "response": response.get("response", "I can help you with that request."),
+            "confidence": response.get("confidence", 0.8),
+            "timestamp": datetime.now().isoformat(),
+            "context": message.context,
+            "agents_used": response.get("agents_used", []),
+            "actions": actions
+        }
+        
+    except Exception as e:
+        logger.error(f"Contextual chat error: {e}")
+        # Fallback response
+        return {
+            "response": f"I'm here to help you with {message.context}. Could you provide more details about what you'd like to do?",
+            "confidence": 0.6,
+            "timestamp": datetime.now().isoformat(),
+            "context": message.context,
+            "agents_used": [],
+            "actions": []
+        }
+
+def generate_contextual_actions(context: str, message: str, response: dict) -> List[dict]:
+    """Generate contextual actions based on context and response"""
+    actions = []
+    
+    if context == "documents":
+        if "filter" in message.lower() or "search" in message.lower():
+            actions.append({"id": "apply_filter", "label": "Apply Smart Filter", "type": "filter"})
+        if "organize" in message.lower():
+            actions.append({"id": "organize", "label": "Auto-Organize Documents", "type": "organize"})
+            
+    elif context == "upload":
+        if "setting" in message.lower() or "configure" in message.lower():
+            actions.append({"id": "configure", "label": "Configure Settings", "type": "configure"})
+        if "optimize" in message.lower():
+            actions.append({"id": "optimize", "label": "Optimize Processing", "type": "optimize"})
+            
+    elif context == "analytics":
+        if "chart" in message.lower() or "graph" in message.lower():
+            actions.append({"id": "create_chart", "label": "Create Chart", "type": "visualization"})
+        if "dashboard" in message.lower():
+            actions.append({"id": "create_dashboard", "label": "Create Dashboard", "type": "dashboard"})
+            
+    elif context == "insights":
+        if "report" in message.lower():
+            actions.append({"id": "generate_report", "label": "Generate Report", "type": "report"})
+        if "export" in message.lower():
+            actions.append({"id": "export_data", "label": "Export Data", "type": "export"})
+    
+    return actions
+
+# ============================================================================
 # AGENT ENDPOINTS
 # ============================================================================
 
