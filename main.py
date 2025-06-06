@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import logging
+from datetime import datetime
 
 # Import our custom modules
 from config import Settings
@@ -23,7 +24,7 @@ PORT = int(os.getenv("PORT", "8000"))  # Properly handle Railway's PORT
 app = FastAPI(
     title="Strategy AI Backend",
     description="Enhanced FastAPI backend for Strategy AI platform",
-    version="2.0.0"
+    version="2.0.1"
 )
 
 # Configure CORS
@@ -51,13 +52,19 @@ class LoginResponse(BaseModel):
 async def root():
     return {
         "message": "Strategy AI Backend is running!",
-        "version": "2.0.0",
-        "status": "operational"
+        "version": "2.0.1",
+        "status": "operational",
+        "timestamp": datetime.now().isoformat(),
+        "enhancement": "Authentication system enabled"
     }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": os.getenv("RAILWAY_ENVIRONMENT", "local")}
+    return {
+        "status": "healthy", 
+        "timestamp": datetime.now().isoformat(),
+        "environment": os.getenv("RAILWAY_ENVIRONMENT", "local")
+    }
 
 @app.post("/auth/login", response_model=LoginResponse)
 async def login(login_request: LoginRequest):
@@ -83,7 +90,8 @@ async def protected_route(current_user: dict = Depends(get_current_user)):
     """Example of a protected route"""
     return {
         "message": f"Hello {current_user['sub']}, this is a protected route!",
-        "user": current_user
+        "user": current_user,
+        "timestamp": datetime.now().isoformat()
     }
 
 if __name__ == "__main__":
