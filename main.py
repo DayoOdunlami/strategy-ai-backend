@@ -717,51 +717,15 @@ class ContextualChatMessage(BaseModel):
 async def contextual_chat(message: ContextualChatMessage):
     """Contextual chat endpoint for frontend components"""
     try:
-        # Map context to appropriate agent specialization
-        context_map = {
-            "documents": "Document analysis and metadata extraction",
-            "upload": "Document processing optimization", 
-            "domains": "Domain and use case management",
-            "map": "Geographic and network analysis",
-            "insights": "Data analysis and insights generation",
-            "analytics": "Performance metrics and reporting",
-            "settings": "System configuration and optimization"
-        }
-        
-        # Determine sector and use case based on context
-        sector_map = {
-            "documents": "General",
-            "upload": "General", 
-            "domains": "General",
-            "map": "Rail",
-            "insights": "Analytics",
-            "analytics": "Analytics",
-            "settings": "System"
-        }
-        
-        context_lower = message.context.lower()
-        sector = sector_map.get(context_lower, "General")
-        specialization = context_map.get(context_lower, "General assistance")
-        
-        # Create agent request
-        agent_request = {
-            "query": message.message,
-            "sector": sector,
-            "use_case": "Contextual Chat",
-            "context": message.context,
-            "specialization": specialization,
-            "user_type": "contextual"
-        }
-        
-        # Use orchestration agent to process contextual request
-        response = await orchestration_agent.process(agent_request)
+        # Generate truly contextual responses based on the specific context and message
+        response = await generate_contextual_response(message.context, message.message)
         
         # Generate contextual actions based on context and response
         actions = generate_contextual_actions(message.context, message.message, response)
         
         return {
-            "response": response.get("response", "I can help you with that request."),
-            "confidence": response.get("confidence", 0.8),
+            "response": response["response"],
+            "confidence": response["confidence"],
             "timestamp": datetime.now().isoformat(),
             "context": message.context,
             "agents_used": response.get("agents_used", []),
@@ -779,6 +743,131 @@ async def contextual_chat(message: ContextualChatMessage):
             "agents_used": [],
             "actions": []
         }
+
+async def generate_contextual_response(context: str, user_message: str) -> dict:
+    """Generate truly contextual responses based on context and user input"""
+    
+    # Create context-specific prompts that actually respond to user input
+    context_prompts = {
+        "documents": f"""
+You are a Document Management Assistant. The user is asking: "{user_message}"
+
+Respond specifically to their request about documents. If they're asking about:
+- Filtering/searching: Help them with search criteria and filters
+- Organization: Suggest document organization strategies
+- Metadata: Explain metadata management
+- Upload issues: Address document upload concerns
+
+Keep your response focused, practical, and directly related to their specific question about document management.
+
+Response:""",
+
+        "analytics": f"""
+You are an Analytics Assistant. The user is asking: "{user_message}"
+
+Respond specifically to their analytics request. If they're asking about:
+- Dashboards: Explain how to create or customize dashboards
+- Metrics: Help interpret specific metrics they mention
+- Charts/visualizations: Guide them on creating charts
+- Reports: Assist with report generation
+- Performance: Analyze system or user performance data
+
+Keep your response focused on their specific analytics question and provide actionable guidance.
+
+Response:""",
+
+        "upload": f"""
+You are an Upload Configuration Assistant. The user is asking: "{user_message}"
+
+Respond specifically to their upload-related request. If they're asking about:
+- Settings: Help them configure upload settings
+- Processing: Explain document processing options
+- Optimization: Suggest ways to improve upload performance
+- AI configuration: Guide AI-powered document processing setup
+- Chunking: Explain chunking strategies
+
+Provide practical, specific guidance related to their upload question.
+
+Response:""",
+
+        "insights": f"""
+You are a Data Insights Assistant. The user is asking: "{user_message}"
+
+Respond specifically to their insights request. If they're asking about:
+- Trends: Help them identify and analyze trends
+- Patterns: Explain pattern recognition in their data
+- Reports: Guide report generation for insights
+- Analysis: Provide data analysis guidance
+- Exploration: Help them explore their data
+
+Give them specific, actionable advice related to their insights question.
+
+Response:""",
+
+        "map": f"""
+You are a Railway Map Assistant. The user is asking: "{user_message}"
+
+Respond specifically to their map-related request. If they're asking about:
+- Navigation: Help them find locations or routes
+- Stations: Provide information about railway stations
+- Regions: Explain regional connectivity or data
+- Projects: Discuss railway projects or infrastructure
+- Analysis: Guide geographic or network analysis
+
+Provide specific, railway-focused guidance related to their question.
+
+Response:""",
+
+        "domains": f"""
+You are a Domain Management Assistant. The user is asking: "{user_message}"
+
+Respond specifically to their domain request. If they're asking about:
+- Creating domains: Guide domain creation process
+- Use cases: Help configure use cases
+- Templates: Assist with template management
+- Organization: Help organize domains and use cases
+- Configuration: Guide domain configuration
+
+Provide practical guidance specific to their domain management question.
+
+Response:""",
+
+        "settings": f"""
+You are a System Settings Assistant. The user is asking: "{user_message}"
+
+Respond specifically to their settings request. If they're asking about:
+- Configuration: Help them configure system settings
+- Performance: Guide performance optimization
+- Integrations: Assist with system integrations
+- User management: Help with user settings and permissions
+- Backup/maintenance: Guide system maintenance tasks
+
+Provide specific, actionable guidance for their settings question.
+
+Response:"""
+    }
+    
+    # Get context-specific prompt or default
+    prompt = context_prompts.get(context, f"""
+You are a helpful assistant for the {context} section. The user is asking: "{user_message}"
+
+Provide a helpful, specific response related to their question about {context}.
+
+Response:""")
+    
+    # Use AI service to generate contextual response
+    ai_response = await ai_service.generate_response(
+        query=prompt,
+        sector="General",
+        use_case=f"{context.title()} Assistant",
+        user_type="contextual"
+    )
+    
+    return {
+        "response": ai_response["response"],
+        "confidence": ai_response.get("confidence", 0.8),
+        "agents_used": [f"{context.title()}Assistant"]
+    }
 
 def generate_contextual_actions(context: str, message: str, response: dict) -> List[dict]:
     """Generate contextual actions based on context and response"""
