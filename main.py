@@ -32,7 +32,7 @@ PORT = int(os.getenv("PORT", "8000"))  # Properly handle Railway's PORT
 app = FastAPI(
     title="Strategy AI Backend",
     description="Enhanced FastAPI backend for Strategy AI platform with document processing, chat, and analytics",
-    version="2.1.0"
+    version="2.1.1"
 )
 
 # Configure CORS
@@ -69,7 +69,7 @@ class LoginResponse(BaseModel):
 async def root():
     return {
         "message": "Strategy AI Backend is running!",
-        "version": "2.1.0",
+        "version": "2.1.1",
         "status": "operational",
         "timestamp": datetime.now().isoformat(),
         "enhancement": "Authentication system enabled",
@@ -82,7 +82,7 @@ async def health_check():
         "status": "healthy", 
         "timestamp": datetime.now().isoformat(),
         "environment": os.getenv("RAILWAY_ENVIRONMENT", "local"),
-        "version": "2.1.0"
+        "version": "2.1.1"
     }
 
 # ============================================================================
