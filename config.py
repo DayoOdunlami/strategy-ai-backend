@@ -1,6 +1,6 @@
-# config.py - Configuration Management
+# config.py - Simplified Configuration Management
 import os
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -8,25 +8,25 @@ class Settings(BaseSettings):
     
     # API Configuration
     API_TITLE: str = "Strategy AI Backend"
-    API_VERSION: str = "2.0.0"
+    API_VERSION: str = "2.0.1"
     DEBUG: bool = False
     
     # Server Configuration
     HOST: str = "0.0.0.0"
-    PORT: int = int(os.getenv("PORT", "8000"))  # Properly handle Railway's PORT
-    ALLOWED_ORIGINS: List[str] = ["*"]  # Configure for production
+    PORT: int = int(os.getenv("PORT", "8000"))
+    ALLOWED_ORIGINS: List[str] = ["*"]
     
-    # Database Configuration
-    SUPABASE_URL: str
-    SUPABASE_SERVICE_KEY: str
+    # Optional Database Configuration (for future use)
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_SERVICE_KEY: Optional[str] = None
     
-    # Vector Store Configuration
-    PINECONE_API_KEY: str
+    # Optional Vector Store Configuration (for future use)
+    PINECONE_API_KEY: Optional[str] = None
     PINECONE_INDEX_NAME: str = "strategy-docs"
     PINECONE_ENVIRONMENT: str = "us-east-1"
     
-    # AI Services Configuration
-    OPENAI_API_KEY: str
+    # Optional AI Services Configuration (for future use)
+    OPENAI_API_KEY: Optional[str] = None
     AI_MODEL_NAME: str = "gpt-4o-mini"
     EMBEDDING_MODEL_NAME: str = "text-embedding-ada-002"
     AI_TEMPERATURE: float = 0.2
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # Admin Configuration
     ADMIN_API_KEY: str = "admin-secret-key-change-in-production"
     
-    # File Processing Configuration
+    # Basic Configuration
     MAX_FILE_SIZE_MB: int = 50
     ALLOWED_FILE_TYPES: List[str] = [".pdf", ".docx", ".txt", ".csv", ".md"]
     TEMP_UPLOAD_DIR: str = "/tmp"
@@ -66,8 +66,9 @@ class Settings(BaseSettings):
     ENABLE_ANALYTICS: bool = True
     
     # Security Configuration
-    API_RATE_LIMIT: str = "100/minute"
-    CORS_MAX_AGE: int = 3600
+    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     class Config:
         env_file = ".env"
