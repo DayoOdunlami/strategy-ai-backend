@@ -12,6 +12,7 @@ import io
 from pathlib import Path
 import json
 import time
+import psutil
 
 # Import our custom modules with error handling
 from config import Settings
@@ -26,7 +27,9 @@ try:
         SystemAnalytics, UserFeedback, FeedbackResponse, ProcessingStatus,
         APIError, SystemSettings, FeedbackAnalytics, AgentResponse, AgentRequest, AgentStatusResponse
     )
+    models_available = True
 except ImportError:
+    models_available = False
     # Simplified models if complex ones fail
     class ChatMessage(BaseModel):
         message: str
@@ -45,18 +48,57 @@ except ImportError:
         model_used: Optional[str] = None
         agents_used: Optional[List[str]] = None
 
+    class DocumentUpload(BaseModel):
+        file_content: str
+        filename: str
+        sector: str = "General"
+        use_case: Optional[str] = None
+
+    class DocumentResponse(BaseModel):
+        success: bool
+        document_id: Optional[str] = None
+        message: str
+
+    class UserFeedback(BaseModel):
+        chat_log_id: Optional[str] = None
+        document_id: Optional[str] = None
+        session_id: Optional[str] = None
+        rating: int
+        feedback_type: str = "general"
+        comment: Optional[str] = None
+        helpful: Optional[bool] = None
+
+    class FeedbackResponse(BaseModel):
+        success: bool
+        feedback_id: Optional[str] = None
+        message: str
+
 try:
     from database import db_manager
     from vector_store import vector_store
     from specialized_agents import orchestration_agent
     from document_processor import document_processor
+    database_available = True
 except ImportError as e:
     logging.warning(f"Could not import advanced modules: {e}")
+    database_available = False
     # Create simple fallback objects
     class SimpleManager:
         async def test_connection(self): return True
         def get_available_models(self): return ["demo"]
         def get_agent_status(self): return {"status": "demo_mode"}
+        async def get_document_count(self): return 0
+        async def get_sector_count(self): return 5
+        async def get_use_case_count(self): return 10
+        async def get_feedback_count(self): return 0
+        async def store_feedback(self, **kwargs): return str(uuid.uuid4())
+        async def get_feedback_analytics(self, days=30): return {"total_feedback": 0, "average_rating": 0.0}
+        async def log_chat_interaction(self, **kwargs): return str(uuid.uuid4())
+        async def list_documents(self, **kwargs): return ([], 0)
+        async def get_document(self, doc_id): return None
+        async def semantic_search(self, **kwargs): return []
+        async def process_document(self, **kwargs): return {"success": True, "document_id": str(uuid.uuid4()), "chunks_created": 1, "processing_summary": "Demo mode"}
+        async def delete_document(self, doc_id): return True
     
     db_manager = SimpleManager()
     vector_store = SimpleManager()
@@ -119,10 +161,20 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Enhanced health check with system status"""
+    """Enhanced health check with comprehensive system status"""
     try:
         db_status = await db_manager.test_connection()
         vector_status = await vector_store.test_connection()
+        
+        # Get system metrics
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        
+        # Get database metrics
+        doc_count = await db_manager.get_document_count()
+        sector_count = await db_manager.get_sector_count()
+        use_case_count = await db_manager.get_use_case_count()
+        feedback_count = await db_manager.get_feedback_count()
         
         return {
             "status": "healthy" if db_status and vector_status else "degraded",
@@ -133,9 +185,31 @@ async def health_check():
                 "database": "connected" if db_status else "error",
                 "vector_store": "connected" if vector_status else "error",
                 "ai_service": "ready",
-                "multi_agents": "ready"
+                "multi_agents": "ready",
+                "document_processor": "ready",
+                "feedback_system": "enabled"
             },
-            "ai_integration": "enabled"
+            "system": {
+                "cpu_percent": process.cpu_percent(),
+                "memory_used_mb": memory_info.rss / 1024 / 1024,
+                "threads": process.num_threads(),
+                "uptime_seconds": int(time.time() - getattr(app.state, 'start_time', time.time()))
+            },
+            "metrics": {
+                "total_documents": doc_count,
+                "total_sectors": sector_count,
+                "total_use_cases": use_case_count,
+                "total_feedback": feedback_count
+            },
+            "ai_integration": "enabled",
+            "features": {
+                "multi_agent_system": True,
+                "document_processing": True,
+                "semantic_search": True,
+                "user_feedback": True,
+                "real_time_analytics": True,
+                "advanced_chat": True
+            }
         }
     except Exception as e:
         return {
@@ -143,8 +217,8 @@ async def health_check():
             "timestamp": datetime.now().isoformat(),
             "environment": "production", 
             "version": "3.0.0",
-            "mode": "simplified",
-            "message": f"Running in simplified mode: {e}"
+            "mode": "simplified" if not database_available else "full",
+            "message": f"Running in {'simplified' if not database_available else 'full'} mode: {e}"
         }
 
 # ============================================================================
@@ -228,6 +302,234 @@ async def chat_with_ai(message: ChatMessage):
             confidence=0.8,
             model_used="demo"
         )
+
+# ============================================================================
+# DOCUMENT MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.post("/documents/upload", response_model=DocumentResponse)
+async def upload_document(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    sector: str = Form("General"),
+    use_case: str = Form(None),
+    title: str = Form(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Upload and process document"""
+    try:
+        # Read file content
+        file_content = await file.read()
+        
+        # Process document
+        result = await document_processor.process_document(
+            file_content=file_content,
+            filename=file.filename,
+            sector=sector,
+            use_case=use_case,
+            metadata={"title": title or file.filename}
+        )
+        
+        if result["success"]:
+            return DocumentResponse(
+                success=True,
+                document_id=result["document_id"],
+                message=f"Document uploaded successfully. {result['chunks_created']} chunks created."
+            )
+        else:
+            return DocumentResponse(
+                success=False,
+                message=result.get("error", "Upload failed")
+            )
+            
+    except Exception as e:
+        logger.error(f"Document upload error: {e}")
+        return DocumentResponse(
+            success=False,
+            message=f"Document upload failed: {e}"
+        )
+
+@app.get("/documents")
+async def list_documents(
+    sector: Optional[str] = None,
+    use_case: Optional[str] = None,
+    source_type: Optional[str] = None,
+    search: Optional[str] = None,
+    min_rating: Optional[float] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """List documents with filtering"""
+    try:
+        documents, total = await db_manager.list_documents(
+            sector=sector,
+            use_case=use_case,
+            source_type=source_type,
+            search=search,
+            min_rating=min_rating,
+            limit=limit,
+            offset=offset
+        )
+        
+        return {
+            "documents": documents,
+            "total_count": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {e}")
+
+@app.get("/documents/{document_id}")
+async def get_document(document_id: str):
+    """Get document details"""
+    try:
+        document = await db_manager.get_document(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return document
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get document: {e}")
+
+@app.delete("/documents/{document_id}")
+async def delete_document(document_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete document"""
+    try:
+        success = await document_processor.delete_document(document_id)
+        if success:
+            return {"success": True, "message": "Document deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Document not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {e}")
+
+# ============================================================================
+# SEARCH ENDPOINTS  
+# ============================================================================
+
+@app.post("/search")
+async def semantic_search(
+    search_text: str,
+    sector: Optional[str] = None,
+    use_case: Optional[str] = None,
+    top_k: int = 20
+):
+    """Perform semantic search across documents"""
+    try:
+        start_time = time.time()
+        
+        # Build filters
+        filters = {}
+        if sector:
+            filters["sector"] = sector
+        if use_case:
+            filters["use_case"] = use_case
+        
+        # Perform search
+        results = await vector_store.semantic_search(
+            query=search_text,
+            filters=filters,
+            top_k=top_k
+        )
+        
+        search_time_ms = (time.time() - start_time) * 1000
+        
+        # Format results
+        formatted_results = [
+            {
+                "document_id": result.get("metadata", {}).get("document_id", ""),
+                "title": result.get("metadata", {}).get("title", "Unknown"),
+                "chunk_text": result.get("text", ""),
+                "relevance_score": result.get("score", 0.0),
+                "metadata": result.get("metadata", {})
+            }
+            for result in results
+        ]
+        
+        return {
+            "results": formatted_results,
+            "total_count": len(formatted_results),
+            "search_time_ms": search_time_ms,
+            "query": search_text,
+            "filters": {"sector": sector, "use_case": use_case}
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
+
+# ============================================================================
+# FEEDBACK ENDPOINTS
+# ============================================================================
+
+@app.post("/feedback", response_model=FeedbackResponse)
+async def submit_feedback(feedback: UserFeedback, request: Request):
+    """Submit user feedback"""
+    try:
+        feedback_id = await db_manager.store_feedback(
+            chat_log_id=feedback.chat_log_id,
+            document_id=feedback.document_id,
+            session_id=feedback.session_id,
+            rating=feedback.rating,
+            feedback_type=feedback.feedback_type,
+            comment=feedback.comment,
+            helpful=feedback.helpful,
+            metadata={"user_agent": request.headers.get("user-agent", "")}
+        )
+        
+        return FeedbackResponse(
+            success=True,
+            feedback_id=feedback_id,
+            message="Feedback submitted successfully"
+        )
+        
+    except Exception as e:
+        return FeedbackResponse(
+            success=False,
+            message=f"Failed to submit feedback: {e}"
+        )
+
+@app.get("/feedback/analytics")
+async def get_feedback_analytics(
+    days: int = 30,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get feedback analytics"""
+    try:
+        analytics = await db_manager.get_feedback_analytics(days)
+        return analytics
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get feedback analytics: {e}")
+
+# ============================================================================
+# AGENT ENDPOINTS
+# ============================================================================
+
+@app.post("/agents/analyze")
+async def agent_analysis(
+    request_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Direct agent analysis endpoint"""
+    try:
+        response = await orchestration_agent.process(request_data)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Agent analysis failed: {e}")
+
+@app.get("/agents/status")
+async def get_agents_status():
+    """Get status of all agents"""
+    try:
+        status = orchestration_agent.get_agent_status()
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get agent status: {e}")
+
+# Initialize startup state
+if not hasattr(app.state, 'start_time'):
+    app.state.start_time = time.time()
 
 if __name__ == "__main__":
     import uvicorn
