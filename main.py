@@ -11,6 +11,7 @@ from typing import List, Optional
 # Import our custom modules
 from config import Settings
 from auth import get_current_user, create_access_token, verify_password, get_password_hash
+from ai_services import ai_service
 from models import (
     ChatMessage, ChatResponse, DocumentUpload, DocumentResponse, 
     DocumentListResponse, SearchFilter, SearchResult, SearchResponse,
@@ -31,8 +32,8 @@ PORT = int(os.getenv("PORT", "8000"))  # Properly handle Railway's PORT
 
 app = FastAPI(
     title="Strategy AI Backend",
-    description="Enhanced FastAPI backend for Strategy AI platform with document processing, chat, and analytics",
-    version="2.1.1"
+    description="Enhanced FastAPI backend for Strategy AI platform with real OpenAI integration",
+    version="2.2.0"
 )
 
 # Configure CORS
@@ -69,11 +70,12 @@ class LoginResponse(BaseModel):
 async def root():
     return {
         "message": "Strategy AI Backend is running!",
-        "version": "2.1.1",
+        "version": "2.2.0",
         "status": "operational",
         "timestamp": datetime.now().isoformat(),
-        "enhancement": "Authentication system enabled",
-        "features": ["authentication", "chat", "document_management", "search", "analytics", "feedback"]
+        "enhancement": "Real AI integration enabled",
+        "features": ["authentication", "real_ai_chat", "document_management", "search", "analytics", "feedback"],
+        "ai_status": "enabled" if not ai_service.demo_mode else "demo_mode"
     }
 
 @app.get("/health")
@@ -82,7 +84,8 @@ async def health_check():
         "status": "healthy", 
         "timestamp": datetime.now().isoformat(),
         "environment": os.getenv("RAILWAY_ENVIRONMENT", "local"),
-        "version": "2.1.1"
+        "version": "2.2.0",
+        "ai_integration": "enabled" if not ai_service.demo_mode else "demo_mode"
     }
 
 # ============================================================================
@@ -122,30 +125,34 @@ async def protected_route(current_user: dict = Depends(get_current_user)):
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_ai(message: ChatMessage):
-    """AI Chat endpoint (mock implementation)"""
-    # Mock AI response for demonstration
+    """AI Chat endpoint with real OpenAI integration"""
     chat_id = str(uuid.uuid4())
     
-    response_text = f"Hello! I received your message about '{message.message[:50]}...' in the {message.sector} sector. This is a mock response. In production, this would connect to AI services."
+    # Use real AI service
+    ai_result = await ai_service.generate_response(
+        query=message.message,
+        sector=message.sector or "General",
+        use_case=message.use_case,
+        user_type=message.user_type
+    )
     
     # Store chat log
     chat_logs[chat_id] = {
         "id": chat_id,
         "message": message.message,
-        "response": response_text,
+        "response": ai_result["response"],
         "sector": message.sector,
+        "use_case": ai_result["suggested_use_case"],
+        "confidence": ai_result["confidence"],
         "timestamp": datetime.now(),
         "user_type": message.user_type
     }
     
     return ChatResponse(
-        response=response_text,
-        sources=[
-            {"title": "Mock Document 1", "relevance": 0.9},
-            {"title": "Mock Document 2", "relevance": 0.8}
-        ],
-        confidence=0.85,
-        suggested_use_case=f"{message.sector} Analysis" if message.sector != "General" else None
+        response=ai_result["response"],
+        sources=ai_result["sources"],
+        confidence=ai_result["confidence"],
+        suggested_use_case=ai_result["suggested_use_case"]
     )
 
 @app.get("/chat/history")
@@ -352,6 +359,16 @@ async def get_system_analytics(current_user: dict = Depends(get_current_user)):
 async def get_system_settings(current_user: dict = Depends(get_current_user)):
     """Get system settings"""
     return SystemSettings()
+
+@app.get("/ai/status")
+async def get_ai_status():
+    """Get AI service status"""
+    return {
+        "ai_enabled": not ai_service.demo_mode,
+        "model_name": ai_service.model_name if not ai_service.demo_mode else "demo",
+        "status": "operational" if not ai_service.demo_mode else "demo_mode",
+        "message": "Real AI responses enabled" if not ai_service.demo_mode else "Demo mode - set OPENAI_API_KEY to enable real AI"
+    }
 
 if __name__ == "__main__":
     import uvicorn
