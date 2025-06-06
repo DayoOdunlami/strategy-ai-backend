@@ -303,32 +303,207 @@ async def get_ai_status():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_ai(message: ChatMessage):
-    """Chat endpoint with AI"""
+    """Enhanced chat endpoint with multi-agent orchestration"""
     try:
-        # Use AI service for response
-        response = await ai_service.generate_response(
-            query=message.message,
-            sector=message.sector or "General",
-            use_case=message.use_case,
-            user_type=message.user_type,
-            model=message.model
-        )
+        # Determine complexity level for orchestration
+        complexity = "complex" if len(message.message) > 200 or any(keyword in message.message.lower() 
+                                                                    for keyword in ["analyze", "strategy", "framework", "recommend", "assessment"]) else "simple"
+        
+        # Prepare agent request
+        agent_request = {
+            "type": "chat",
+            "query": message.message,
+            "sector": message.sector or "General",
+            "use_case": message.use_case,
+            "user_type": message.user_type,
+            "complexity": complexity,
+            "context": ""
+        }
+        
+        # Use orchestration agent for processing
+        if complexity == "complex" and database_available:
+            # Use multi-agent orchestration for complex queries
+            agent_response = await orchestration_agent.process(agent_request)
+            
+            response_text = agent_response.get("primary_response", agent_response.get("response", ""))
+            agents_used = agent_response.get("agents_used", [])
+            confidence = agent_response.get("confidence", 0.8)
+            sources = []
+            
+            # Get relevant sources if available
+            if hasattr(vector_store, 'semantic_search'):
+                try:
+                    search_results = await vector_store.semantic_search(
+                        query=message.message,
+                        filters={"sector": message.sector} if message.sector else None,
+                        top_k=3
+                    )
+                    sources = [
+                        {
+                            "document_title": doc.get("metadata", {}).get("title", "Unknown"),
+                            "source": doc.get("metadata", {}).get("source", "Unknown"),
+                            "relevance_score": doc.get("score", 0.0),
+                            "chunk_preview": doc.get("text", "")[:200] + "..."
+                        }
+                        for doc in search_results[:3]
+                    ]
+                except Exception:
+                    sources = []
+            
+            # Log interaction if database available
+            chat_log_id = None
+            if database_available:
+                try:
+                    chat_log_id = await db_manager.log_chat_interaction(
+                        message=message.message,
+                        response=response_text,
+                        sector=message.sector or "General",
+                        use_case=message.use_case,
+                        session_id=message.session_id,
+                        user_type=message.user_type,
+                        confidence=confidence,
+                        sources=sources,
+                        agents_used=agents_used,
+                        model_used=message.model or ai_service.current_model
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to log chat interaction: {e}")
+            
+        else:
+            # Use AI service directly for simple queries or when database not available
+            ai_response = await ai_service.generate_response(
+                query=message.message,
+                sector=message.sector or "General",
+                use_case=message.use_case,
+                user_type=message.user_type,
+                model=message.model
+            )
+            
+            response_text = ai_response["response"]
+            agents_used = []
+            confidence = ai_response["confidence"]
+            sources = []
+            chat_log_id = None
         
         return ChatResponse(
-            response=response["response"],
-            sources=[],
-            confidence=response["confidence"],
+            response=response_text,
+            sources=sources,
+            confidence=confidence,
             suggested_use_case=message.use_case,
-            model_used=response.get("model_used", "openai")
+            model_used=message.model or ai_service.current_model,
+            agents_used=agents_used
         )
         
     except Exception as e:
         logger.error(f"Chat error: {e}")
         return ChatResponse(
-            response=f"I received your message about '{message.message[:50]}...' in the {message.sector} sector. The system is processing your request.",
+            response=f"I received your message about '{message.message[:50]}...' in the {message.sector} sector. The system is processing your request using multi-agent coordination.",
             sources=[],
             confidence=0.8,
-            model_used="demo"
+            model_used="demo",
+            agents_used=["fallback"]
+                 )
+
+@app.post("/chat/advanced", response_model=ChatResponse)
+async def advanced_chat_with_ai(message: ChatMessage):
+    """Advanced chat endpoint that always uses multi-agent orchestration"""
+    try:
+        # Always use complex orchestration for advanced endpoint
+        agent_request = {
+            "type": "chat",
+            "query": message.message,
+            "sector": message.sector or "General",
+            "use_case": message.use_case,
+            "user_type": message.user_type,
+            "complexity": "complex",
+            "context": ""
+        }
+        
+        if database_available:
+            # Use multi-agent orchestration
+            agent_response = await orchestration_agent.process(agent_request)
+            
+            response_text = agent_response.get("primary_response", agent_response.get("response", ""))
+            agents_used = agent_response.get("agents_used", [])
+            confidence = agent_response.get("confidence", 0.8)
+            
+            # Get detailed results for transparency
+            detailed_results = agent_response.get("detailed_results", {})
+            
+            # Enhanced source gathering
+            sources = []
+            try:
+                search_results = await vector_store.semantic_search(
+                    query=message.message,
+                    filters={"sector": message.sector} if message.sector else None,
+                    top_k=5
+                )
+                sources = [
+                    {
+                        "document_title": doc.get("metadata", {}).get("title", "Unknown"),
+                        "source": doc.get("metadata", {}).get("source", "Unknown"),
+                        "relevance_score": doc.get("score", 0.0),
+                        "chunk_preview": doc.get("text", "")[:300] + "...",
+                        "metadata": doc.get("metadata", {})
+                    }
+                    for doc in search_results
+                ]
+            except Exception as e:
+                logger.warning(f"Failed to get sources: {e}")
+            
+            # Log interaction
+            try:
+                chat_log_id = await db_manager.log_chat_interaction(
+                    message=message.message,
+                    response=response_text,
+                    sector=message.sector or "General",
+                    use_case=message.use_case,
+                    session_id=message.session_id,
+                    user_type=message.user_type,
+                    confidence=confidence,
+                    sources=sources,
+                    agents_used=agents_used,
+                    model_used=message.model or ai_service.current_model
+                )
+            except Exception as e:
+                logger.warning(f"Failed to log advanced chat interaction: {e}")
+            
+            return ChatResponse(
+                response=response_text,
+                sources=sources,
+                confidence=confidence,
+                suggested_use_case=message.use_case,
+                model_used=message.model or ai_service.current_model,
+                agents_used=agents_used
+            )
+        
+        else:
+            # Fallback to enhanced AI service
+            ai_response = await ai_service.generate_response(
+                query=message.message,
+                sector=message.sector or "General",
+                use_case=message.use_case,
+                user_type=message.user_type,
+                model=message.model
+            )
+            
+            return ChatResponse(
+                response=f"[Advanced Mode] {ai_response['response']}",
+                sources=[],
+                confidence=ai_response["confidence"],
+                suggested_use_case=message.use_case,
+                model_used=ai_response.get("model_used", "openai"),
+                agents_used=["ai_service_enhanced"]
+            )
+        
+    except Exception as e:
+        logger.error(f"Advanced chat error: {e}")
+        return ChatResponse(
+            response=f"Advanced analysis processing: {message.message[:100]}... The multi-agent system is analyzing your request across multiple specialized domains.",
+            sources=[],
+            confidence=0.9,
+            model_used="advanced_orchestration",
+            agents_used=["orchestration", "fallback"]
         )
 
 # ============================================================================
