@@ -22,12 +22,18 @@ class AIService:
             self.demo_mode = True
             return
         
-        self.client = openai.OpenAI(api_key=self.openai_api_key)
-        self.model_name = getattr(self.settings, 'AI_MODEL_NAME', 'gpt-3.5-turbo')
-        self.temperature = getattr(self.settings, 'AI_TEMPERATURE', 0.7)
-        self.demo_mode = False
-        
-        logger.info(f"Initialized AI service with model: {self.model_name}")
+        try:
+            self.client = openai.OpenAI(api_key=self.openai_api_key)
+            self.model_name = getattr(self.settings, 'AI_MODEL_NAME', 'gpt-3.5-turbo')
+            self.temperature = getattr(self.settings, 'AI_TEMPERATURE', 0.7)
+            self.demo_mode = False
+            
+            logger.info(f"Initialized AI service with model: {self.model_name}")
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenAI client: {e}")
+            logger.warning("Falling back to demo mode due to OpenAI client error")
+            self.demo_mode = True
+            self.model_name = "demo"
 
     async def detect_use_case(self, query: str, sector: str) -> str:
         """
