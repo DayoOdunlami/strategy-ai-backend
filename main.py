@@ -770,120 +770,79 @@ async def generate_contextual_response(context: str, user_message: str, page_sta
         if page_state.get("searchQuery"):
             page_context += f"Current search: '{page_state['searchQuery']}'\n"
     
-    # Create context-specific prompts that actually respond to user input
+    # Create conversational, helpful prompts that give concise, actionable responses
     context_prompts = {
         "documents": f"""
-You are a Document Management Assistant. The user is asking: "{user_message}"
-
-SYSTEM STATUS: {dev_status.get(context, 'Status unknown')}
+You're helping with document management. User asks: "{user_message}"
+{f"Status: {dev_status.get(context)}" if dev_status.get(context) else ""}
 {page_context}
 
-Respond specifically to their request about documents. If they're asking about:
-- Filtering/searching: Help them with search criteria and filters
-- Organization: Suggest document organization strategies  
-- Metadata: Explain metadata management
-- Upload issues: Address document upload concerns
+Be conversational and helpful. Give a short, practical response (2-3 sentences max). 
+If you can suggest a specific action or next step, do that. Ask a follow-up question if it would help.
 
-Keep your response focused, practical, and directly related to their specific question about document management.
+Don't give long explanations - just direct, friendly help.
 
 Response:""",
 
         "analytics": f"""
-You are an Analytics Assistant. The user is asking: "{user_message}"
-
-SYSTEM STATUS: {dev_status.get(context, 'Status unknown')}
+You're helping with analytics and dashboards. User asks: "{user_message}"
+{f"Status: {dev_status.get(context)}" if dev_status.get(context) else ""}
 {page_context}
 
-Respond specifically to their analytics request. If they're asking about:
-- Dashboards: Explain how to create or customize dashboards
-- Metrics: Help interpret specific metrics they mention  
-- Charts/visualizations: Guide them on creating charts
-- Reports: Assist with report generation
-- Performance: Analyze system or user performance data
-
-If features are under development, let them know and suggest alternatives.
+Be friendly and concise (2-3 sentences). If analytics features are still being built, acknowledge it and suggest what they can do now.
+Focus on immediate next steps, not lengthy explanations.
 
 Response:""",
 
         "upload": f"""
-You are an Upload Configuration Assistant. The user is asking: "{user_message}"
+You're helping with document uploads. User asks: "{user_message}"
+{f"Status: {dev_status.get(context)}" if dev_status.get(context) else ""}
 
-Respond specifically to their upload-related request. If they're asking about:
-- Settings: Help them configure upload settings
-- Processing: Explain document processing options
-- Optimization: Suggest ways to improve upload performance
-- AI configuration: Guide AI-powered document processing setup
-- Chunking: Explain chunking strategies
-
-Provide practical, specific guidance related to their upload question.
+Keep it short and actionable (2-3 sentences). Give them specific steps they can take right now.
+If they need settings adjusted, tell them exactly what to do.
 
 Response:""",
 
         "insights": f"""
-You are a Data Insights Assistant. The user is asking: "{user_message}"
-
-SYSTEM STATUS: {dev_status.get(context, 'Status unknown')}
+You're helping with data insights and trends. User asks: "{user_message}"
+{f"Status: {dev_status.get(context)}" if dev_status.get(context) else ""}
 {page_context}
 
-Respond specifically to their insights request. If they're asking about:
-- Trends: Help them identify and analyze trends
-- Patterns: Explain pattern recognition in their data
-- Reports: Guide report generation for insights
-- Analysis: Provide data analysis guidance
-- Exploration: Help them explore their data
-
-Note: Some trend analysis currently uses sample data while we build out full analytics.
+Be concise and honest (2-3 sentences). If we're still building features, say so and suggest what they can explore now.
+Focus on actionable next steps.
 
 Response:""",
 
         "map": f"""
-You are a Railway Map Assistant. The user is asking: "{user_message}"
+You're helping with the railway map. User asks: "{user_message}"
+{f"Status: {dev_status.get(context)}" if dev_status.get(context) else ""}
 
-Respond specifically to their map-related request. If they're asking about:
-- Navigation: Help them find locations or routes
-- Stations: Provide information about railway stations
-- Regions: Explain regional connectivity or data
-- Projects: Discuss railway projects or infrastructure
-- Analysis: Guide geographic or network analysis
-
-Provide specific, railway-focused guidance related to their question.
+Be helpful but honest (2-3 sentences). If the map is still being built, let them know what's coming and what they can do now.
 
 Response:""",
 
         "domains": f"""
-You are a Domain Management Assistant. The user is asking: "{user_message}"
+You're helping with domain and use case management. User asks: "{user_message}"
+{f"Status: {dev_status.get(context)}" if dev_status.get(context) else ""}
 
-Respond specifically to their domain request. If they're asking about:
-- Creating domains: Guide domain creation process
-- Use cases: Help configure use cases
-- Templates: Assist with template management
-- Organization: Help organize domains and use cases
-- Configuration: Guide domain configuration
-
-Provide practical guidance specific to their domain management question.
+Keep it conversational and brief (2-3 sentences). If features are in development, be upfront and suggest alternatives.
 
 Response:""",
 
         "settings": f"""
-You are a System Settings Assistant. The user is asking: "{user_message}"
+You're helping with system settings. User asks: "{user_message}"
+{f"Status: {dev_status.get(context)}" if dev_status.get(context) else ""}
 
-Respond specifically to their settings request. If they're asking about:
-- Configuration: Help them configure system settings
-- Performance: Guide performance optimization
-- Integrations: Assist with system integrations
-- User management: Help with user settings and permissions
-- Backup/maintenance: Guide system maintenance tasks
-
-Provide specific, actionable guidance for their settings question.
+Give a short, practical answer (2-3 sentences). Tell them exactly what they can adjust now.
 
 Response:"""
     }
     
     # Get context-specific prompt or default
     prompt = context_prompts.get(context, f"""
-You are a helpful assistant for the {context} section. The user is asking: "{user_message}"
+You're helping with {context}. User asks: "{user_message}"
 
-Provide a helpful, specific response related to their question about {context}.
+Be conversational and helpful (2-3 sentences max). Give them something specific they can do right now.
 
 Response:""")
     
