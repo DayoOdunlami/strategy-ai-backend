@@ -712,13 +712,14 @@ async def get_feedback_analytics(
 class ContextualChatMessage(BaseModel):
     message: str
     context: str
+    pageState: Optional[dict] = None  # Optional - won't break existing calls
 
 @app.post("/api/chat/contextual")
 async def contextual_chat(message: ContextualChatMessage):
     """Contextual chat endpoint for frontend components"""
     try:
         # Generate truly contextual responses based on the specific context and message
-        response = await generate_contextual_response(message.context, message.message)
+        response = await generate_contextual_response(message.context, message.message, message.pageState)
         
         # Generate contextual actions based on context and response
         actions = generate_contextual_actions(message.context, message.message, response)
@@ -744,17 +745,42 @@ async def contextual_chat(message: ContextualChatMessage):
             "actions": []
         }
 
-async def generate_contextual_response(context: str, user_message: str) -> dict:
+async def generate_contextual_response(context: str, user_message: str, page_state: Optional[dict] = None) -> dict:
     """Generate truly contextual responses based on context and user input"""
+    
+    # Development status for each context - helps AI set proper expectations
+    dev_status = {
+        "documents": "✅ Fully functional - upload, search, filter, metadata",
+        "analytics": "🚧 Under development - some charts show demo data", 
+        "upload": "✅ Fully functional - file upload and processing working",
+        "insights": "🚧 Under development - trend analysis uses sample data",
+        "map": "🚧 Under development - railway map shows placeholder data",
+        "domains": "🚧 Under development - domain management in progress",
+        "settings": "🚧 Under development - basic settings only"
+    }
+    
+    # Build page awareness context if provided
+    page_context = ""
+    if page_state:
+        page_context = f"\n\nCurrent page state: {json.dumps(page_state, indent=2)}\n"
+        if page_state.get("visibleDocuments"):
+            page_context += f"User can see {len(page_state['visibleDocuments'])} documents currently.\n"
+        if page_state.get("activeFilters"):
+            page_context += f"Active filters: {page_state['activeFilters']}\n"
+        if page_state.get("searchQuery"):
+            page_context += f"Current search: '{page_state['searchQuery']}'\n"
     
     # Create context-specific prompts that actually respond to user input
     context_prompts = {
         "documents": f"""
 You are a Document Management Assistant. The user is asking: "{user_message}"
 
+SYSTEM STATUS: {dev_status.get(context, 'Status unknown')}
+{page_context}
+
 Respond specifically to their request about documents. If they're asking about:
 - Filtering/searching: Help them with search criteria and filters
-- Organization: Suggest document organization strategies
+- Organization: Suggest document organization strategies  
 - Metadata: Explain metadata management
 - Upload issues: Address document upload concerns
 
@@ -765,14 +791,17 @@ Response:""",
         "analytics": f"""
 You are an Analytics Assistant. The user is asking: "{user_message}"
 
+SYSTEM STATUS: {dev_status.get(context, 'Status unknown')}
+{page_context}
+
 Respond specifically to their analytics request. If they're asking about:
 - Dashboards: Explain how to create or customize dashboards
-- Metrics: Help interpret specific metrics they mention
+- Metrics: Help interpret specific metrics they mention  
 - Charts/visualizations: Guide them on creating charts
 - Reports: Assist with report generation
 - Performance: Analyze system or user performance data
 
-Keep your response focused on their specific analytics question and provide actionable guidance.
+If features are under development, let them know and suggest alternatives.
 
 Response:""",
 
@@ -793,6 +822,9 @@ Response:""",
         "insights": f"""
 You are a Data Insights Assistant. The user is asking: "{user_message}"
 
+SYSTEM STATUS: {dev_status.get(context, 'Status unknown')}
+{page_context}
+
 Respond specifically to their insights request. If they're asking about:
 - Trends: Help them identify and analyze trends
 - Patterns: Explain pattern recognition in their data
@@ -800,7 +832,7 @@ Respond specifically to their insights request. If they're asking about:
 - Analysis: Provide data analysis guidance
 - Exploration: Help them explore their data
 
-Give them specific, actionable advice related to their insights question.
+Note: Some trend analysis currently uses sample data while we build out full analytics.
 
 Response:""",
 
