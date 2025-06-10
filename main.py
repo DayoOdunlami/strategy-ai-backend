@@ -45,7 +45,7 @@ try:
         ChatMessage, ChatResponse, DocumentUpload, DocumentResponse, 
         DocumentListResponse, SearchFilter, SearchResult, SearchResponse,
         SystemAnalytics, UserFeedback, FeedbackResponse, ProcessingStatus,
-        APIError, SystemSettings, FeedbackAnalytics, AgentResponse, AgentRequest, AgentStatusResponse
+        APIError, FeedbackAnalytics, AgentResponse, AgentRequest, AgentStatusResponse
     )
     models_available = True
     logging.info("✅ Models imported successfully")
@@ -105,7 +105,15 @@ try:
     class WorkingDatabaseManager:
         def __init__(self):
             settings = Settings()
-            self.supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
+            
+            # Check if Supabase credentials are available
+            supabase_url = settings.SUPABASE_URL or os.getenv("SUPABASE_URL")
+            supabase_key = settings.SUPABASE_SERVICE_KEY or os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
+            
+            if not supabase_url or not supabase_key:
+                raise ImportError(f"Supabase credentials missing: URL={bool(supabase_url)}, KEY={bool(supabase_key)}")
+            
+            self.supabase: Client = create_client(supabase_url, supabase_key)
             logging.info("✅ Supabase connected successfully")
 
         async def test_connection(self) -> bool:
