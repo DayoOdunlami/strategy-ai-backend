@@ -7,7 +7,6 @@ from enum import Enum
 
 import tiktoken
 import openai
-from openai import OpenAI
 import PyPDF2
 from docx import Document
 import nltk
@@ -46,8 +45,8 @@ class SmartChunkingService:
     """
     
     def __init__(self):
-        # Initialize OpenAI client
-        self.openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        # Initialize OpenAI client (v0.28 format)
+        openai.api_key = os.getenv('OPENAI_API_KEY')
         
         # Initialize tokenizer (for OpenAI models)
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -252,7 +251,7 @@ class SmartChunkingService:
             }}
             """
             
-            response = await self.openai_client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
@@ -507,7 +506,7 @@ class SmartChunkingService:
             {content[:1500]}
             """
             
-            response = await self.openai_client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
