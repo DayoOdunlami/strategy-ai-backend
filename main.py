@@ -162,6 +162,46 @@ try:
         async def get_sector_count(self): return 4
         async def get_use_case_count(self): return 9
         async def get_feedback_count(self): return 15
+        
+        async def list_documents(self, sector=None, use_case=None, source_type=None, search=None, min_rating=None, limit=50, offset=0):
+            """List documents from Supabase"""
+            try:
+                query = self.supabase.table('documents').select('*')
+                if sector:
+                    query = query.eq('sector', sector)
+                if use_case:
+                    query = query.eq('use_case', use_case)
+                result = query.range(offset, offset + limit - 1).execute()
+                documents = result.data
+                total = len(documents)  # Simplified count
+                return documents, total
+            except Exception as e:
+                logging.error(f"Failed to list documents: {e}")
+                return [], 0
+        
+        async def get_document(self, document_id: str):
+            """Get a specific document"""
+            try:
+                result = self.supabase.table('documents').select('*').eq('id', document_id).execute()
+                return result.data[0] if result.data else None
+            except Exception as e:
+                logging.error(f"Failed to get document: {e}")
+                return None
+        
+        async def store_feedback(self, **kwargs):
+            """Store user feedback"""
+            try:
+                feedback_id = str(uuid.uuid4())
+                feedback = {
+                    "id": feedback_id,
+                    "created_at": datetime.now().isoformat(),
+                    **kwargs
+                }
+                self.supabase.table('feedback').insert(feedback).execute()
+                return feedback_id
+            except Exception as e:
+                logging.error(f"Failed to store feedback: {e}")
+                return None
 
     # Create working document processor with real chunking
     class WorkingDocumentProcessor:
@@ -244,9 +284,34 @@ try:
             
             return chunks
 
+        async def delete_document(self, document_id: str) -> bool:
+            """Delete document and its chunks"""
+            try:
+                # Delete from documents table via db_manager
+                result = await db_manager.supabase.table('documents').delete().eq('id', document_id).execute()
+                logging.info(f"✅ Document deleted: {document_id}")
+                return True
+            except Exception as e:
+                logging.error(f"Failed to delete document: {e}")
+                return False
+
     # Create simple vector store
     class WorkingVectorStore:
         async def test_connection(self): return True
+        
+        async def semantic_search(self, query, filters=None, top_k=20):
+            """Mock semantic search for now"""
+            return [
+                {
+                    "text": f"Sample search result for '{query}'",
+                    "score": 0.85,
+                    "metadata": {
+                        "document_id": "sample-doc-id",
+                        "title": "Sample Document",
+                        "sector": filters.get("sector", "General") if filters else "General"
+                    }
+                }
+            ]
 
     # Create working instances
     db_manager = WorkingDatabaseManager()
