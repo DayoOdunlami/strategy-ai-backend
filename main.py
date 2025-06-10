@@ -40,6 +40,7 @@ from ai_services import ai_service
 
 # Try to import complex modules, fall back to simple versions
 try:
+    logging.info("Attempting to import models...")
     from models import (
         ChatMessage, ChatResponse, DocumentUpload, DocumentResponse, 
         DocumentListResponse, SearchFilter, SearchResult, SearchResponse,
@@ -47,7 +48,9 @@ try:
         APIError, SystemSettings, FeedbackAnalytics, AgentResponse, AgentRequest, AgentStatusResponse
     )
     models_available = True
-except ImportError:
+    logging.info("✅ Models imported successfully")
+except ImportError as e:
+    logging.error(f"❌ Models import failed: {e}")
     models_available = False
     # Simplified models if complex ones fail
     class ChatMessage(BaseModel):
@@ -93,13 +96,20 @@ except ImportError:
         message: str
 
 try:
+    logging.info("Attempting to import AI modules...")
     from database import db_manager
+    logging.info("✅ database imported successfully")
     from vector_store import vector_store
+    logging.info("✅ vector_store imported successfully")
     from specialized_agents import orchestration_agent
+    logging.info("✅ specialized_agents imported successfully")
     from document_processor import document_processor
+    logging.info("✅ document_processor imported successfully")
     database_available = True
+    logging.info("🎉 ALL AI modules imported successfully!")
 except ImportError as e:
-    logging.warning(f"Could not import advanced modules: {e}")
+    logging.error(f"❌ AI modules import failed: {e}")
+    logging.error(f"📋 Import error details: {type(e).__name__}: {str(e)}")
     database_available = False
     # Create simple fallback objects
     class SimpleManager:
