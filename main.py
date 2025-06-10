@@ -12,6 +12,7 @@ import io
 from pathlib import Path
 import json
 import time
+from supabase import create_client, Client
 # Try to import optional dependencies
 try:
     import psutil
@@ -927,7 +928,30 @@ if not hasattr(app.state, 'start_time'):
 async def get_regions():
     """Get all railway regions with analytics"""
     try:
-        # Demo data for now - will connect to Supabase later
+        # Connect to Supabase and fetch real data
+        if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
+            supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+            
+            response = supabase.table('railway_regions').select(
+                'code, name, regional_director, route_miles, station_count, cpc_projects'
+            ).execute()
+            
+            if response.data:
+                # Transform Supabase data to match existing API format
+                regions = []
+                for region in response.data:
+                    regions.append({
+                        "code": region["code"],
+                        "name": region["name"],
+                        "director": region["regional_director"],
+                        "route_miles": region["route_miles"],
+                        "stations": region["station_count"],
+                        "cpc_projects": region["cpc_projects"]
+                    })
+                
+                return {"regions": regions, "total": len(regions)}
+        
+        # Fallback to demo data if Supabase not configured
         regions = [
             {"code": "ER", "name": "Eastern", "director": "Jason Hamilton", "route_miles": 4000, "stations": 700, "cpc_projects": 13},
             {"code": "SC", "name": "Scotland", "director": "Sarah McKenzie", "route_miles": 3200, "stations": 450, "cpc_projects": 8},
@@ -943,7 +967,26 @@ async def get_regions():
 async def get_region(region_code: str):
     """Get specific region details"""
     try:
-        # Demo data for now
+        # Connect to Supabase and fetch specific region
+        if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
+            supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+            
+            response = supabase.table('railway_regions').select(
+                'code, name, regional_director, route_miles, station_count, cpc_projects'
+            ).eq('code', region_code).execute()
+            
+            if response.data and len(response.data) > 0:
+                region = response.data[0]
+                return {
+                    "code": region["code"],
+                    "name": region["name"],
+                    "director": region["regional_director"],
+                    "route_miles": region["route_miles"],
+                    "stations": region["station_count"],
+                    "cpc_projects": region["cpc_projects"]
+                }
+        
+        # Fallback to demo data if Supabase not configured
         region_data = {
             "ER": {"code": "ER", "name": "Eastern", "director": "Jason Hamilton", "route_miles": 4000, "stations": 700, "cpc_projects": 13},
             "SC": {"code": "SC", "name": "Scotland", "director": "Sarah McKenzie", "route_miles": 3200, "stations": 450, "cpc_projects": 8},
