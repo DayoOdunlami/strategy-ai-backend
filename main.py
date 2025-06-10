@@ -1005,7 +1005,14 @@ async def get_region(region_code: str):
 # AI DOCUMENT ANALYSIS ENDPOINT (UPGRADED)
 # ============================================================================
 
-from ai_chunking_service import chunking_service
+# Temporarily disable AI chunking import until upload is fixed
+try:
+    from ai_chunking_service import chunking_service
+    AI_CHUNKING_AVAILABLE = True
+except ImportError as e:
+    print(f"AI Chunking service not available: {e}")
+    AI_CHUNKING_AVAILABLE = False
+    chunking_service = None
 
 class DocumentAnalysisResponse(BaseModel):
     success: bool
@@ -1023,48 +1030,67 @@ async def analyze_document_for_chunking(
         # Read file content
         file_content = await file.read()
         
-        # Basic text extraction (keeping existing working code)
-        try:
-            if file.filename.lower().endswith('.pdf'):
-                content_text = file_content.decode('utf-8', errors='ignore')[:2000]
-            elif file.filename.lower().endswith(('.txt', '.md')):
-                content_text = file_content.decode('utf-8', errors='ignore')[:2000]
-            else:
-                content_text = file_content.decode('utf-8', errors='ignore')[:2000]
-        except:
-            content_text = ""
-        
-        if not content_text.strip():
-            return DocumentAnalysisResponse(
-                success=False,
-                error="Could not extract text from document"
+        if AI_CHUNKING_AVAILABLE and chunking_service:
+            # Use smart AI analysis
+            content_text = chunking_service.extract_text_from_file(file_content, file.filename)
+            
+            if not content_text.strip():
+                return DocumentAnalysisResponse(
+                    success=False,
+                    error="Could not extract text from document"
+                )
+            
+            # Smart AI analysis
+            analysis_result = await chunking_service.analyze_document_smart(
+                content_text,
+                file.filename,
+                sector,
+                use_case
             )
-        
-        # Basic analysis (keeping existing logic working)
-        word_count = len(content_text.split())
-        has_structure = any(marker in content_text.lower() for marker in ['chapter', 'section', 'part'])
-        has_technical = any(term in content_text.lower() for term in ['implementation', 'specification', 'requirements'])
-        
-        complexity = "high" if word_count > 1000 or has_technical else "medium" if has_structure else "low"
-        
-        analysis_result = {
-            "contentType": "PDF Document" if file.filename.lower().endswith('.pdf') else "Text Document",
-            "complexity": complexity,
-            "recommendedChunking": {
-                "type": "semantic",
-                "size": 800,
-                "overlap": 150,
-                "strategy": "AI-optimized semantic chunking"
-            },
-            "estimatedChunks": max(1, len(file_content) // 1000),
-            "aiInsights": {
-                "wordCount": word_count,
-                "hasStructure": has_structure,
-                "hasTechnicalContent": has_technical,
-                "hasDataElements": False,
-                "recommendedStrategy": f"Optimized for {sector} sector {use_case} use case"
+        else:
+            # Fallback to basic analysis
+            try:
+                if file.filename.lower().endswith('.pdf'):
+                    content_text = file_content.decode('utf-8', errors='ignore')[:2000]
+                elif file.filename.lower().endswith(('.txt', '.md')):
+                    content_text = file_content.decode('utf-8', errors='ignore')[:2000]
+                else:
+                    content_text = file_content.decode('utf-8', errors='ignore')[:2000]
+            except:
+                content_text = ""
+            
+            if not content_text.strip():
+                return DocumentAnalysisResponse(
+                    success=False,
+                    error="Could not extract text from document"
+                )
+            
+            # Basic analysis (keeping existing logic working)
+            word_count = len(content_text.split())
+            has_structure = any(marker in content_text.lower() for marker in ['chapter', 'section', 'part'])
+            has_technical = any(term in content_text.lower() for term in ['implementation', 'specification', 'requirements'])
+            
+            complexity = "high" if word_count > 1000 or has_technical else "medium" if has_structure else "low"
+            
+            analysis_result = {
+                "contentType": "PDF Document" if file.filename.lower().endswith('.pdf') else "Text Document",
+                "complexity": complexity,
+                "recommendedChunking": {
+                    "type": "semantic",
+                    "size": 800,
+                    "overlap": 150,
+                    "strategy": "AI-optimized semantic chunking (fallback mode)"
+                },
+                "estimatedChunks": max(1, len(file_content) // 1000),
+                "aiInsights": {
+                    "wordCount": word_count,
+                    "hasStructure": has_structure,
+                    "hasTechnicalContent": has_technical,
+                    "hasDataElements": False,
+                    "recommendedStrategy": f"Optimized for {sector} sector {use_case} use case",
+                    "fallbackMode": True
+                }
             }
-        }
         
         return DocumentAnalysisResponse(
             success=True,
@@ -1072,7 +1098,7 @@ async def analyze_document_for_chunking(
         )
         
     except Exception as e:
-        logger.error(f"Smart document analysis error: {e}")
+        logger.error(f"Document analysis error: {e}")
         return DocumentAnalysisResponse(
             success=False,
             error=f"Analysis failed: {str(e)}"
