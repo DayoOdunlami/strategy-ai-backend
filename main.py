@@ -257,7 +257,18 @@ try:
     
 except ImportError as e:
     logging.error(f"❌ Working AI modules failed: {e}")
-    # ... existing fallback code ...
+    logging.error("🚨 CRITICAL: AI modules required but not available")
+    logging.error("🚨 System will not start in demo mode - fix required")
+    database_available = False
+    
+    # DO NOT create fallback objects - fail properly
+    db_manager = None
+    document_processor = None
+    vector_store = None
+    orchestration_agent = None
+    
+    # Optionally, you could raise an exception to prevent startup:
+    # raise RuntimeError(f"Required AI modules failed to import: {e}")
 
 # Initialize settings
 settings = Settings()
@@ -317,6 +328,47 @@ async def root():
 async def health_check():
     """Enhanced health check with comprehensive system status"""
     try:
+        # Check if AI modules are available
+        if db_manager is None or document_processor is None:
+            return {
+                "status": "degraded",
+                "timestamp": datetime.now().isoformat(),
+                "environment": "production",
+                "version": "3.0.0",
+                "error": "AI modules not available - system configuration error",
+                "services": {
+                    "database": "error - not initialized",
+                    "vector_store": "error - not initialized",
+                    "ai_service": "error - not initialized",
+                    "multi_agents": "error - not initialized",
+                    "document_processor": "error - not initialized",
+                    "feedback_system": "disabled"
+                },
+                "system": {
+                    "cpu_percent": 0.0,
+                    "memory_used_mb": 100.0,
+                    "threads": 1,
+                    "uptime_seconds": 0,
+                    "note": "AI modules failed to initialize"
+                },
+                "metrics": {
+                    "total_documents": 0,
+                    "total_sectors": 0,
+                    "total_use_cases": 0,
+                    "total_feedback": 0
+                },
+                "ai_integration": "failed",
+                "features": {
+                    "multi_agent_system": False,
+                    "document_processing": False,
+                    "semantic_search": False,
+                    "user_feedback": False,
+                    "real_time_analytics": False,
+                    "advanced_chat": False
+                }
+            }
+        
+        # Normal health check if AI modules are available
         db_status = await db_manager.test_connection()
         vector_status = await vector_store.test_connection()
         
@@ -654,38 +706,70 @@ async def upload_document(
     use_case: str = Form(None),
     title: str = Form(None)
 ):
-    """Upload and process document with AI-optimized chunking for Pinecone"""
+    """Upload and process a document with background processing"""
+    
+    # Check if AI modules are available
+    if document_processor is None:
+        logger.error("🚨 Document upload failed: AI modules not available")
+        raise HTTPException(
+            status_code=503, 
+            detail="AI processing modules are not available. System configuration error."
+        )
+    
     try:
+        logger.info(f"Processing document upload: {file.filename}")
+        
         # Read file content
         file_content = await file.read()
         
-        # Process document (keeping existing working method)
-        result = await document_processor.process_document(
+        # Validate file size (50MB limit)
+        max_size = 50 * 1024 * 1024
+        if len(file_content) > max_size:
+            raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+        
+        # Process document in background
+        background_tasks.add_task(
+            process_document_background,
             file_content=file_content,
             filename=file.filename,
             sector=sector,
             use_case=use_case,
-            metadata={"title": title or file.filename}
+            title=title
         )
         
-        if result["success"]:
-            return DocumentResponse(
-                success=True,
-                document_id=result["document_id"],
-                message=f"Document uploaded successfully. {result['chunks_created']} chunks created."
-            )
-        else:
-            return DocumentResponse(
-                success=False,
-                message=result.get("error", "Upload failed")
-            )
-            
-    except Exception as e:
-        logger.error(f"Smart document upload error: {e}")
         return DocumentResponse(
-            success=False,
-            message=f"Document upload failed: {e}"
+            success=True,
+            message=f"Document '{file.filename}' uploaded successfully and processing started",
+            document_id=None  # Will be generated in background
         )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+async def process_document_background(
+    file_content: bytes,
+    filename: str,
+    sector: str,
+    use_case: Optional[str] = None,
+    title: Optional[str] = None
+):
+    """Background task for document processing"""
+    try:
+        result = await document_processor.process_document(
+            file_content=file_content,
+            filename=filename,
+            sector=sector,
+            use_case=use_case,
+            title=title
+        )
+        logger.info(f"✅ Background processing complete: {filename}")
+        return result
+    except Exception as e:
+        logger.error(f"❌ Background processing failed for {filename}: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.get("/documents")
 async def list_documents(
