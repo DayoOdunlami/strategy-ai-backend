@@ -1007,6 +1007,11 @@ async def get_region(region_code: str):
 
 from ai_chunking_service import chunking_service
 
+class DocumentAnalysisResponse(BaseModel):
+    success: bool
+    analysis: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
 @app.post("/documents/analyze", response_model=DocumentAnalysisResponse)
 async def analyze_document_for_chunking(
     file: UploadFile = File(...),
@@ -1076,11 +1081,6 @@ async def analyze_document_for_chunking(
 # ============================================================================
 # RESPONSE MODELS
 # ============================================================================
-
-class DocumentAnalysisResponse(BaseModel):
-    success: bool
-    analysis: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
 
 if __name__ == "__main__":
     import uvicorn
