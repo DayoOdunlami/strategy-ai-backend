@@ -1005,7 +1005,7 @@ async def get_region(region_code: str):
 # AI DOCUMENT ANALYSIS ENDPOINT (UPGRADED)
 # ============================================================================
 
-# from ai_chunking_service import chunking_service  # TODO: Add when ready
+from ai_chunking_service import chunking_service
 
 @app.post("/documents/analyze", response_model=DocumentAnalysisResponse)
 async def analyze_document_for_chunking(
