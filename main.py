@@ -919,6 +919,46 @@ async def get_agents_status():
 if not hasattr(app.state, 'start_time'):
     app.state.start_time = time.time()
 
+# ============================================================================
+# RAILWAY REGIONS ENDPOINTS  
+# ============================================================================
+
+@app.get("/api/regions")
+async def get_regions():
+    """Get all railway regions with analytics"""
+    try:
+        # Demo data for now - will connect to Supabase later
+        regions = [
+            {"code": "ER", "name": "Eastern", "director": "Jason Hamilton", "route_miles": 4000, "stations": 700, "cpc_projects": 13},
+            {"code": "SC", "name": "Scotland", "director": "Sarah McKenzie", "route_miles": 3200, "stations": 450, "cpc_projects": 8},
+            {"code": "WR", "name": "Western", "director": "David Jones", "route_miles": 3800, "stations": 650, "cpc_projects": 11},
+            {"code": "NR", "name": "Northern", "director": "Michael Brown", "route_miles": 3500, "stations": 600, "cpc_projects": 10},
+            {"code": "SR", "name": "Southern", "director": "Emma Wilson", "route_miles": 2800, "stations": 850, "cpc_projects": 15}
+        ]
+        return {"regions": regions, "total": len(regions)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get regions: {e}")
+
+@app.get("/api/regions/{region_code}")
+async def get_region(region_code: str):
+    """Get specific region details"""
+    try:
+        # Demo data for now
+        region_data = {
+            "ER": {"code": "ER", "name": "Eastern", "director": "Jason Hamilton", "route_miles": 4000, "stations": 700, "cpc_projects": 13},
+            "SC": {"code": "SC", "name": "Scotland", "director": "Sarah McKenzie", "route_miles": 3200, "stations": 450, "cpc_projects": 8},
+            "WR": {"code": "WR", "name": "Western", "director": "David Jones", "route_miles": 3800, "stations": 650, "cpc_projects": 11},
+            "NR": {"code": "NR", "name": "Northern", "director": "Michael Brown", "route_miles": 3500, "stations": 600, "cpc_projects": 10},
+            "SR": {"code": "SR", "name": "Southern", "director": "Emma Wilson", "route_miles": 2800, "stations": 850, "cpc_projects": 15}
+        }
+        if region_code not in region_data:
+            raise HTTPException(status_code=404, detail=f"Region {region_code} not found")
+        return region_data[region_code]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get region: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=HOST, port=PORT) 
