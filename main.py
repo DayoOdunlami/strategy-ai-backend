@@ -42,10 +42,9 @@ from ai_services import ai_service
 try:
     logging.info("Attempting to import models...")
     from models import (
-        ChatMessage, ChatResponse, DocumentUpload, DocumentResponse, 
-        DocumentListResponse, SearchFilter, SearchResult, SearchResponse,
-        SystemAnalytics, UserFeedback, FeedbackResponse, ProcessingStatus,
-        APIError, FeedbackAnalytics, AgentResponse, AgentRequest, AgentStatusResponse
+        ChatMessage, ChatResponse, DocumentUpload,
+        UserFeedback, FeedbackResponse, SearchResult, SearchResponse,
+        AgentResponse, AgentRequest, OrchestrationResponse
     )
     models_available = True
     logging.info("✅ Models imported successfully")
