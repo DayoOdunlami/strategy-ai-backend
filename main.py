@@ -122,11 +122,21 @@ try:
 
         async def store_document(self, title: str, filename: str, sector: str, use_case: str = None, **kwargs) -> str:
             doc_id = str(uuid.uuid4())
+            
+            # Map frontend sector values to database values (handle case sensitivity)
+            sector_mapping = {
+                "general": "General",
+                "rail": "Rail", 
+                "maritime": "Maritime",
+                "highways": "Highways"
+            }
+            db_sector = sector_mapping.get(sector.lower(), "General")  # Default to General if not found
+            
             document = {
                 "id": doc_id,
                 "title": title,
                 "filename": filename,
-                "sector": sector if sector != "General" else "Rail",
+                "sector": db_sector,  # Use mapped sector value
                 "use_case": use_case or "general",
                 "tags": kwargs.get("tags", ""),  # Default empty string instead of null
                 "source_type": "file",  # Changed to "file" to match existing constraint
