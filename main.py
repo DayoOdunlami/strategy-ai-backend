@@ -75,6 +75,12 @@ except ImportError as e:
         sector: str = "General"
         use_case: Optional[str] = None
 
+    class FeedbackResponse(BaseModel):
+        success: bool
+        feedback_id: Optional[str] = None
+        message: str
+
+    # Define DocumentResponse globally so endpoints can use it
     class DocumentResponse(BaseModel):
         success: bool
         document_id: Optional[str] = None
@@ -88,11 +94,6 @@ except ImportError as e:
         feedback_type: str = "general"
         comment: Optional[str] = None
         helpful: Optional[bool] = None
-
-    class FeedbackResponse(BaseModel):
-        success: bool
-        feedback_id: Optional[str] = None
-        message: str
 
 try:
     logging.info("Attempting to import AI modules...")
