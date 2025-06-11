@@ -80,11 +80,7 @@ except ImportError as e:
         feedback_id: Optional[str] = None
         message: str
 
-    # Define DocumentResponse globally so endpoints can use it
-    class DocumentResponse(BaseModel):
-        success: bool
-        document_id: Optional[str] = None
-        message: str
+
 
     class UserFeedback(BaseModel):
         chat_log_id: Optional[str] = None
@@ -370,6 +366,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Define DocumentResponse at global scope - CRITICAL for endpoints
+class DocumentResponse(BaseModel):
+    success: bool
+    document_id: Optional[str] = None
+    message: str
 
 # Security
 security = HTTPBearer()
