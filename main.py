@@ -122,39 +122,71 @@ try:
                 return False
 
         async def store_document(self, title: str, filename: str, sector: str, use_case: str = None, **kwargs) -> str:
-            doc_id = str(uuid.uuid4())
-            
-            # Map frontend sector values to database values (handle case sensitivity)
-            sector_mapping = {
-                "general": "General",
-                "rail": "Rail", 
-                "maritime": "Maritime",
-                "highways": "Highways"
-            }
-            db_sector = sector_mapping.get(sector.lower(), "General")  # Default to General if not found
-            
-            document = {
-                "id": doc_id,
-                "title": title,
-                "filename": filename,
-                "sector": db_sector,  # Use mapped sector value
-                "use_case": use_case or "general",
-                "tags": kwargs.get("tags", ""),  # Default empty string instead of null
-                "source_type": "file",  # Changed to "file" to match existing constraint
-                "source_url": kwargs.get("source_url", ""),  # Default empty string
-                "status": "completed",
-                "chunk_count": 0,
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-                "metadata": kwargs.get("metadata", {})
-            }
+            """Store document in Supabase documents table"""
             try:
-                self.supabase.table('documents').insert(document).execute()
-                logging.info(f"✅ Document stored in Supabase: {title}")
-                return doc_id
+                document_data = {
+                    "title": title,
+                    "filename": filename,
+                    "sector": sector,
+                    "use_case": use_case,
+                    "source_type": "file",
+                    "status": "processing",
+                    "metadata": kwargs.get("metadata", {}),
+                    "feedback_count": 0,
+                    "average_rating": None,
+                    "chunk_count": 0
+                }
+                
+                result = await self.supabase.table('documents').insert(document_data).execute()
+                doc_id = result.data[0]['id'] if result.data else None
+                
+                if doc_id:
+                    logging.info(f"✅ Document stored in Supabase: {title} (ID: {doc_id})")
+                    return str(doc_id)
+                else:
+                    raise Exception("Failed to get document ID from Supabase")
+                    
             except Exception as e:
-                logging.error(f"Failed to store document: {e}")
-                return doc_id
+                logging.error(f"Failed to store document in Supabase: {e}")
+                raise
+
+        async def store_chunks(self, document_id: str, chunks: List[Dict[str, Any]]) -> bool:
+            """Store document chunks in Supabase chunks table with real text content"""
+            try:
+                chunk_records = []
+                for chunk in chunks:
+                    chunk_record = {
+                        "document_id": document_id,
+                        "chunk_index": chunk["chunk_index"],
+                        "chunk_text": chunk["chunk_text"],  # Real text content
+                        "token_count": chunk.get("token_count", len(chunk["chunk_text"].split())),
+                        "chunk_type": chunk.get("chunk_type", "semantic"),
+                        "metadata": {
+                            "character_length": len(chunk["chunk_text"]),
+                            "processing_method": "real_content_extraction"
+                        }
+                    }
+                    chunk_records.append(chunk_record)
+                
+                if chunk_records:
+                    result = await self.supabase.table('chunks').insert(chunk_records).execute()
+                    
+                    if result.data:
+                        logging.info(f"✅ Stored {len(chunk_records)} chunks in Supabase for document {document_id}")
+                        
+                        # Update document chunk count
+                        await self.update_document_status(document_id, "completed", len(chunk_records))
+                        return True
+                    else:
+                        logging.error(f"Failed to store chunks in Supabase: {result}")
+                        return False
+                else:
+                    logging.warning("No chunks to store")
+                    return True
+                    
+            except Exception as e:
+                logging.error(f"Failed to store chunks in Supabase: {e}")
+                return False
 
         async def update_document_status(self, document_id: str, status: str, chunk_count: int = 0) -> bool:
             try:
@@ -280,10 +312,14 @@ This strategic framework provides a comprehensive roadmap for achieving organiza
                     metadata=kwargs.get("metadata", {})
                 )
 
-                # Update chunk count
-                await db_manager.update_document_status(doc_id, "completed", len(chunks))
+                # **NEW: Store actual chunks with real text content in Supabase**
+                chunks_stored = await db_manager.store_chunks(doc_id, chunks)
+                
+                if not chunks_stored:
+                    logging.error(f"Failed to store chunks for document {doc_id}")
+                    # Continue anyway - document metadata is already stored
 
-                logging.info(f"✅ Real AI processing complete: {filename} -> {len(chunks)} chunks")
+                logging.info(f"✅ Real AI processing complete: {filename} -> {len(chunks)} chunks stored in Supabase")
                 
                 return {
                     "success": True,
@@ -1075,6 +1111,53 @@ async def delete_document(document_id: str, current_user: dict = Depends(get_cur
             raise HTTPException(status_code=404, detail="Document not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete document: {e}")
+
+@app.get("/documents/{document_id}/chunks")
+async def get_document_chunks(document_id: str):
+    """Get all chunks for a specific document with real text content"""
+    try:
+        if not database_available:
+            return {"error": "Database not available"}
+        
+        # Get document info first
+        document = await db_manager.get_document(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Get chunks from database
+        chunks_result = await db_manager.supabase.table('chunks').select('*').eq('document_id', document_id).order('chunk_index').execute()
+        
+        chunks_data = []
+        if chunks_result.data:
+            for chunk in chunks_result.data:
+                chunks_data.append({
+                    "chunk_index": chunk["chunk_index"],
+                    "chunk_text": chunk["chunk_text"],  # Real extracted text content
+                    "token_count": chunk.get("token_count", 0),
+                    "chunk_type": chunk.get("chunk_type", "semantic"),
+                    "character_length": len(chunk["chunk_text"]),
+                    "metadata": chunk.get("metadata", {}),
+                    "created_at": chunk.get("created_at")
+                })
+        
+        return {
+            "success": True,
+            "document": {
+                "id": document_id,
+                "title": document.get("title"),
+                "filename": document.get("filename"),
+                "sector": document.get("sector"),
+                "use_case": document.get("use_case"),
+                "chunk_count": len(chunks_data)
+            },
+            "chunks": chunks_data,
+            "total_chunks": len(chunks_data),
+            "total_characters": sum(len(chunk["chunk_text"]) for chunk in chunks_data)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving chunks for document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve chunks: {str(e)}")
 
 # ============================================================================
 # SEARCH ENDPOINTS  
