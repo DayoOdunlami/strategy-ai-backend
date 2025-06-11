@@ -126,7 +126,7 @@ try:
                 "id": doc_id,
                 "title": title,
                 "filename": filename,
-                "sector": sector,
+                "sector": sector if sector != "General" else "Rail",
                 "use_case": use_case or "general",
                 "tags": kwargs.get("tags", ""),  # Default empty string instead of null
                 "source_type": "file",  # Changed to "file" to match existing constraint
