@@ -129,7 +129,7 @@ try:
                 "sector": sector,
                 "use_case": use_case or "general",
                 "tags": kwargs.get("tags", ""),  # Default empty string instead of null
-                "source_type": "manual",  # Changed from "upload" to "manual" to match constraint
+                "source_type": "file",  # Changed to "file" to match existing constraint
                 "source_url": kwargs.get("source_url", ""),  # Default empty string
                 "status": "completed",
                 "chunk_count": 0,
