@@ -44,7 +44,8 @@ try:
     from models import (
         ChatMessage, ChatResponse, DocumentUpload,
         UserFeedback, FeedbackResponse, SearchResult, SearchResponse,
-        AgentResponse, AgentRequest, OrchestrationResponse
+        AgentResponse, AgentRequest, OrchestrationResponse,
+        DocumentResponse as RichDocumentResponse  # Import rich model for Option B
     )
     models_available = True
     logging.info("✅ Models imported successfully")
@@ -836,6 +837,63 @@ async def upload_document(
         raise
     except Exception as e:
         logger.error(f"Document upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+@app.post("/documents/upload-v2", response_model=RichDocumentResponse)
+async def upload_document_v2(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    sector: str = Form("General"),
+    use_case: str = Form(None),
+    title: str = Form(None)
+):
+    """Upload and process a document with full document response (Option B test)"""
+    
+    # Check if AI modules are available
+    if document_processor is None:
+        logger.error("🚨 Document upload failed: AI modules not available")
+        raise HTTPException(
+            status_code=503, 
+            detail="AI processing modules are not available. System configuration error."
+        )
+    
+    try:
+        logger.info(f"Processing document upload (Option B): {file.filename}")
+        
+        # Read file content
+        file_content = await file.read()
+        
+        # Validate file size (50MB limit)
+        max_size = 50 * 1024 * 1024
+        if len(file_content) > max_size:
+            raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+        
+        # Process document immediately (not in background for Option B)
+        result = await document_processor.process_document(
+            file_content=file_content,
+            filename=file.filename,
+            sector=sector,
+            use_case=use_case,
+            title=title or file.filename
+        )
+        
+        if result.get("success"):
+            # Get the stored document with full details
+            document_id = result.get("document_id")
+            stored_doc = await db_manager.get_document(document_id)
+            
+            if stored_doc:
+                # Return full document details
+                return stored_doc
+            else:
+                raise HTTPException(status_code=500, detail="Failed to retrieve stored document")
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "Processing failed"))
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document upload error (Option B): {e}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 async def process_document_background(
