@@ -324,9 +324,6 @@ try:
                 logging.warning(f"AI tag generation failed: {e}")
                 return f"{sector.lower()}, strategy, planning, policy"
 
-    # Create AI enhancer instance
-    ai_enhancer = AIEnhancer()
-
     # Create working document processor with real chunking
     class WorkingDocumentProcessor:
         def __init__(self):
@@ -543,9 +540,28 @@ This strategic framework provides a comprehensive roadmap for achieving organiza
                 logging.error(f"Failed to delete document: {e}")
                 return False
 
+    # Create simple vector store
+    class WorkingVectorStore:
+        async def test_connection(self): return True
+        
+        async def semantic_search(self, query, filters=None, top_k=20):
+            """Mock semantic search for now"""
+            return [
+                {
+                    "text": f"Sample search result for '{query}'",
+                    "score": 0.85,
+                    "metadata": {
+                        "document_id": "sample-doc-id",
+                        "title": "Sample Document",
+                        "sector": filters.get("sector", "General") if filters else "General"
+                    }
+                }
+            ]
+
     # Create working instances
     db_manager = WorkingDatabaseManager()
     document_processor = WorkingDocumentProcessor()
+    ai_enhancer = AIEnhancer()
     vector_store = WorkingVectorStore()
     
     # Mock orchestration agent
