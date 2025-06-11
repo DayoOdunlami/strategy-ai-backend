@@ -128,9 +128,13 @@ try:
                 "filename": filename,
                 "sector": sector,
                 "use_case": use_case or "general",
+                "tags": kwargs.get("tags", ""),  # Default empty string instead of null
+                "source_type": "upload",  # Required field - set to 'upload'
+                "source_url": kwargs.get("source_url", ""),  # Default empty string
                 "status": "completed",
                 "chunk_count": 0,
                 "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
                 "metadata": kwargs.get("metadata", {})
             }
             try:
