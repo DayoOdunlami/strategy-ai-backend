@@ -1,20 +1,22 @@
 fastapi==0.104.1
 uvicorn==0.24.0
 python-multipart==0.0.6
+pydantic==2.5.0
 supabase==2.0.2
 python-dotenv==1.0.0
-pydantic==2.5.0
 pydantic-settings==2.0.3
 psycopg2-binary==2.9.9
 PyJWT==2.8.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
+# Document processing - MINIMAL stable versions
+PyPDF2==3.0.1
+python-docx==1.1.0
+
 # AI and Document Processing (compatible versions)
 openai==0.28.1
 tiktoken==0.5.2
-PyPDF2==3.0.1
-python-docx==1.1.0
 beautifulsoup4==4.12.2
 lxml==4.9.3
 
