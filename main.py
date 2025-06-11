@@ -137,7 +137,7 @@ try:
                     "chunk_count": 0
                 }
                 
-                result = await self.supabase.table('documents').insert(document_data).execute()
+                result = self.supabase.table('documents').insert(document_data).execute()
                 doc_id = result.data[0]['id'] if result.data else None
                 
                 if doc_id:
@@ -169,7 +169,7 @@ try:
                     chunk_records.append(chunk_record)
                 
                 if chunk_records:
-                    result = await self.supabase.table('chunks').insert(chunk_records).execute()
+                    result = self.supabase.table('chunks').insert(chunk_records).execute()
                     
                     if result.data:
                         logging.info(f"✅ Stored {len(chunk_records)} chunks in Supabase for document {document_id}")
@@ -1125,7 +1125,7 @@ async def get_document_chunks(document_id: str):
             raise HTTPException(status_code=404, detail="Document not found")
         
         # Get chunks from database
-        chunks_result = await db_manager.supabase.table('chunks').select('*').eq('document_id', document_id).order('chunk_index').execute()
+        chunks_result = db_manager.supabase.table('chunks').select('*').eq('document_id', document_id).order('chunk_index').execute()
         
         chunks_data = []
         if chunks_result.data:
