@@ -158,12 +158,12 @@ try:
                     chunk_record = {
                         "document_id": document_id,
                         "chunk_index": chunk["chunk_index"],
-                        "chunk_text": chunk["chunk_text"],  # Real text content
+                        "text": chunk["chunk_text"],  # Match your schema: 'text' column
                         "token_count": chunk.get("token_count", len(chunk["chunk_text"].split())),
-                        "chunk_type": chunk.get("chunk_type", "semantic"),
                         "metadata": {
                             "character_length": len(chunk["chunk_text"]),
-                            "processing_method": "real_content_extraction"
+                            "processing_method": "real_content_extraction",
+                            "chunk_type": chunk.get("chunk_type", "semantic")
                         }
                     }
                     chunk_records.append(chunk_record)
@@ -1132,10 +1132,10 @@ async def get_document_chunks(document_id: str):
             for chunk in chunks_result.data:
                 chunks_data.append({
                     "chunk_index": chunk["chunk_index"],
-                    "chunk_text": chunk["chunk_text"],  # Real extracted text content
+                    "chunk_text": chunk["text"],  # Fixed: use 'text' column from schema
                     "token_count": chunk.get("token_count", 0),
-                    "chunk_type": chunk.get("chunk_type", "semantic"),
-                    "character_length": len(chunk["chunk_text"]),
+                    "chunk_type": chunk.get("metadata", {}).get("chunk_type", "semantic"),
+                    "character_length": len(chunk["text"]),
                     "metadata": chunk.get("metadata", {}),
                     "created_at": chunk.get("created_at")
                 })
