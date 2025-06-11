@@ -7,12 +7,14 @@ from pydantic import BaseModel
 import logging
 from datetime import datetime
 import uuid
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import io
 from pathlib import Path
 import json
 import time
 from supabase import create_client, Client
+import openai
+import re
 # Try to import optional dependencies
 try:
     import psutil
@@ -129,6 +131,7 @@ try:
                     "filename": filename,
                     "sector": sector,
                     "use_case": use_case,
+                    "tags": kwargs.get("tags", ""),  # Add tags support
                     "source_type": "file",
                     "status": "processing",
                     "metadata": kwargs.get("metadata", {}),
@@ -246,6 +249,84 @@ try:
                 logging.error(f"Failed to store feedback: {e}")
                 return None
 
+    # Add AI helper class before WorkingDocumentProcessor
+    class AIEnhancer:
+        """AI enhancement utilities for document processing"""
+        
+        def __init__(self):
+            self.openai_available = self._setup_openai()
+        
+        def _setup_openai(self) -> bool:
+            """Setup OpenAI client"""
+            try:
+                openai.api_key = os.getenv('OPENAI_API_KEY')
+                if not openai.api_key:
+                    logging.warning("OpenAI API key not found - AI features disabled")
+                    return False
+                logging.info("✅ OpenAI integration enabled")
+                return True
+            except Exception as e:
+                logging.warning(f"OpenAI setup failed: {e} - AI features disabled")
+                return False
+        
+        async def generate_document_summary(self, text: str, filename: str) -> str:
+            """Generate AI summary of document content"""
+            if not self.openai_available:
+                return f"Document summary: {filename} ({len(text)} characters)"
+            
+            try:
+                # Truncate text if too long (OpenAI token limits)
+                max_chars = 8000  # ~2000 tokens
+                summary_text = text[:max_chars] if len(text) > max_chars else text
+                
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a strategic document analyst. Create concise, informative summaries."},
+                        {"role": "user", "content": f"Summarize this document in 2-3 sentences, focusing on key strategic insights:\n\n{summary_text}"}
+                    ],
+                    max_tokens=150,
+                    temperature=0.3
+                )
+                
+                summary = response.choices[0].message.content.strip()
+                logging.info(f"✅ Generated AI summary for {filename}")
+                return summary
+                
+            except Exception as e:
+                logging.warning(f"AI summary generation failed: {e}")
+                return f"Document summary: {filename} - {len(text)} characters of strategic content"
+        
+        async def generate_smart_tags(self, text: str, sector: str) -> str:
+            """Generate relevant tags from document content"""
+            if not self.openai_available:
+                return f"{sector.lower()}, strategy, planning"
+            
+            try:
+                # Use first part of document for tag generation
+                tag_text = text[:4000] if len(text) > 4000 else text
+                
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "Extract 5-8 relevant tags/keywords from strategic documents. Return as comma-separated list."},
+                        {"role": "user", "content": f"Extract key strategic tags from this {sector} sector document:\n\n{tag_text}"}
+                    ],
+                    max_tokens=80,
+                    temperature=0.2
+                )
+                
+                tags = response.choices[0].message.content.strip()
+                logging.info(f"✅ Generated AI tags: {tags}")
+                return tags
+                
+            except Exception as e:
+                logging.warning(f"AI tag generation failed: {e}")
+                return f"{sector.lower()}, strategy, planning, policy"
+
+    # Create AI enhancer instance
+    ai_enhancer = AIEnhancer()
+
     # Create working document processor with real chunking
     class WorkingDocumentProcessor:
         def __init__(self):
@@ -303,13 +384,31 @@ This strategic framework provides a comprehensive roadmap for achieving organiza
                 # Real chunking (not demo)
                 chunks = self._create_real_chunks(text)
                 
-                # Store in database
+                # **NEW: Add AI enhancements (optional - won't break if they fail)**
+                ai_summary = ""
+                ai_tags = ""
+                try:
+                    ai_summary = await ai_enhancer.generate_document_summary(text, filename)
+                    ai_tags = await ai_enhancer.generate_smart_tags(text, sector)
+                except Exception as e:
+                    logging.warning(f"AI enhancement failed (non-critical): {e}")
+                    ai_summary = f"Document: {filename}"
+                    ai_tags = f"{sector.lower()}, strategy"
+                
+                # Store in database (enhanced metadata)
+                enhanced_metadata = kwargs.get("metadata", {})
+                enhanced_metadata.update({
+                    "ai_summary": ai_summary,
+                    "processing_method": "real_extraction_with_ai"
+                })
+                
                 doc_id = await db_manager.store_document(
                     title=kwargs.get("title", filename),
                     filename=filename,
                     sector=sector,
                     use_case=use_case,
-                    metadata=kwargs.get("metadata", {})
+                    tags=ai_tags,  # Store AI-generated tags
+                    metadata=enhanced_metadata
                 )
 
                 # **NEW: Store actual chunks with real text content in Supabase**
@@ -443,24 +542,6 @@ This strategic framework provides a comprehensive roadmap for achieving organiza
             except Exception as e:
                 logging.error(f"Failed to delete document: {e}")
                 return False
-
-    # Create simple vector store
-    class WorkingVectorStore:
-        async def test_connection(self): return True
-        
-        async def semantic_search(self, query, filters=None, top_k=20):
-            """Mock semantic search for now"""
-            return [
-                {
-                    "text": f"Sample search result for '{query}'",
-                    "score": 0.85,
-                    "metadata": {
-                        "document_id": "sample-doc-id",
-                        "title": "Sample Document",
-                        "sector": filters.get("sector", "General") if filters else "General"
-                    }
-                }
-            ]
 
     # Create working instances
     db_manager = WorkingDatabaseManager()
