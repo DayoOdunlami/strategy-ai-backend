@@ -1960,12 +1960,12 @@ async def update_domain(domain_id: str, updates: DomainUpdateRequest):
     """Update a domain (actually updates sectors table)"""
     try:
         # Only include non-None values in the update
-        update_data = {k: v for k, v in updates.dict().items() if v is not None}
+        update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
         
         if not update_data:
             raise HTTPException(status_code=400, detail="No valid update data provided")
         
-        update_data["updated_at"] = datetime.now().isoformat()
+        # Note: sectors table doesn't have updated_at column, so we don't set it
         
         # Map the domain_id to sector name for existing schema
         # NOTE: Using sectors table since database schema uses sectors not domains
@@ -2164,7 +2164,7 @@ async def update_use_case(use_case_id: str, updates: UseCaseUpdateRequest):
     """Update a use case"""
     try:
         # Only include non-None values in the update
-        update_data = {k: v for k, v in updates.dict().items() if v is not None}
+        update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
         
         if not update_data:
             raise HTTPException(status_code=400, detail="No valid update data provided")
@@ -2270,7 +2270,7 @@ async def move_use_case(use_case_id: str, move_request: UseCaseMoveRequest):
         # Update the use case's sector
         update_data = {
             "sector": target_sector_name,  # use cases reference sector by name
-            "updated_at": datetime.now().isoformat()
+            "updated_at": datetime.now().isoformat()  # use_cases table has updated_at column
         }
         
         result = db_manager.supabase.table('use_cases').update(update_data).eq('id', use_case_id).execute()
