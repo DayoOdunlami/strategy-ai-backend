@@ -1756,6 +1756,21 @@ async def analyze_document_for_chunking(
 # DOMAIN AND USE CASE MANAGEMENT ENDPOINTS
 # ============================================================================
 
+# TODO: TERMINOLOGY CLEANUP NEEDED
+# Currently mixing "domains" and "sectors" terminology inconsistently:
+# - Database schema uses "sectors" table
+# - API endpoints use "/domains" paths  
+# - Frontend expects "domains" in responses
+# - Backend maps sectors → domains in transformation layer
+# 
+# DECISION NEEDED: Standardize on either "domains" OR "sectors" throughout:
+# Option A: Rename database "sectors" → "domains" (requires migration)
+# Option B: Rename API endpoints "/sectors" and update frontend
+# Option C: Keep current mapping but document clearly
+#
+# Impact: Frontend, Backend, Database, Documentation, User Interface
+# Priority: Medium (functional but confusing for maintenance)
+
 class DomainCreateRequest(BaseModel):
     name: str
     description: str
