@@ -1892,12 +1892,26 @@ async def list_domains():
 
 @app.get("/domains/{domain_id}")
 async def get_domain(domain_id: str):
-    """Get a specific domain"""
+    """Get a specific domain (from sectors table)"""
     try:
-        result = db_manager.supabase.table('domains').select('*').eq('id', domain_id).execute()
+        result = db_manager.supabase.table('sectors').select('*').eq('id', domain_id).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Domain not found")
-        return result.data[0]
+        
+        # Transform response to domain format
+        sector = result.data[0]
+        domain = {
+            'id': sector['id'],
+            'name': sector['name'],
+            'description': sector.get('description', ''),
+            'color': sector.get('color', '#3B82F6'),
+            'icon': sector.get('icon', 'folder'),
+            'is_active': sector.get('is_active', True),
+            'document_count': sector.get('document_count', 0),
+            'created_at': sector.get('created_at', ''),
+            'updated_at': sector.get('updated_at', '')
+        }
+        return domain
     except HTTPException:
         raise
     except Exception as e:
@@ -1906,7 +1920,7 @@ async def get_domain(domain_id: str):
 
 @app.post("/domains")
 async def create_domain(domain: DomainCreateRequest):
-    """Create a new domain"""
+    """Create a new domain (in sectors table)"""
     try:
         domain_data = {
             "name": domain.name,
@@ -1917,10 +1931,24 @@ async def create_domain(domain: DomainCreateRequest):
             "document_count": 0
         }
         
-        result = db_manager.supabase.table('domains').insert(domain_data).execute()
+        result = db_manager.supabase.table('sectors').insert(domain_data).execute()
         if not result.data:
             raise HTTPException(status_code=400, detail="Failed to create domain")
-        return result.data[0]
+        
+        # Transform response to domain format
+        sector = result.data[0]
+        domain_response = {
+            'id': sector['id'],
+            'name': sector['name'],
+            'description': sector.get('description', ''),
+            'color': sector.get('color', '#3B82F6'),
+            'icon': sector.get('icon', 'folder'),
+            'is_active': sector.get('is_active', True),
+            'document_count': sector.get('document_count', 0),
+            'created_at': sector.get('created_at', ''),
+            'updated_at': sector.get('updated_at', '')
+        }
+        return domain_response
     except HTTPException:
         raise
     except Exception as e:
@@ -1929,7 +1957,7 @@ async def create_domain(domain: DomainCreateRequest):
 
 @app.put("/domains/{domain_id}")
 async def update_domain(domain_id: str, updates: DomainUpdateRequest):
-    """Update a domain"""
+    """Update a domain (actually updates sectors table)"""
     try:
         # Only include non-None values in the update
         update_data = {k: v for k, v in updates.dict().items() if v is not None}
@@ -1939,10 +1967,26 @@ async def update_domain(domain_id: str, updates: DomainUpdateRequest):
         
         update_data["updated_at"] = datetime.now().isoformat()
         
-        result = db_manager.supabase.table('domains').update(update_data).eq('id', domain_id).execute()
+        # Map the domain_id to sector name for existing schema
+        # NOTE: Using sectors table since database schema uses sectors not domains
+        result = db_manager.supabase.table('sectors').update(update_data).eq('id', domain_id).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Domain not found")
-        return result.data[0]
+        
+        # Transform response back to domain format
+        sector = result.data[0]
+        domain = {
+            'id': sector['id'],
+            'name': sector['name'],
+            'description': sector.get('description', ''),
+            'color': sector.get('color', '#3B82F6'),
+            'icon': sector.get('icon', 'folder'),
+            'is_active': sector.get('is_active', True),
+            'document_count': sector.get('document_count', 0),
+            'created_at': sector.get('created_at', ''),
+            'updated_at': sector.get('updated_at', '')
+        }
+        return domain
     except HTTPException:
         raise
     except Exception as e:
@@ -1951,10 +1995,10 @@ async def update_domain(domain_id: str, updates: DomainUpdateRequest):
 
 @app.delete("/domains/{domain_id}")
 async def delete_domain(domain_id: str):
-    """Delete a domain (only if no documents are linked)"""
+    """Delete a domain (from sectors table, only if no documents are linked)"""
     try:
         # Check if domain has documents
-        domain_result = db_manager.supabase.table('domains').select('document_count').eq('id', domain_id).execute()
+        domain_result = db_manager.supabase.table('sectors').select('document_count').eq('id', domain_id).execute()
         if not domain_result.data:
             raise HTTPException(status_code=404, detail="Domain not found")
         
@@ -1962,11 +2006,11 @@ async def delete_domain(domain_id: str):
         if domain.get('document_count', 0) > 0:
             raise HTTPException(status_code=400, detail="Cannot delete domain with linked documents")
         
-        # Delete associated use cases first
-        db_manager.supabase.table('use_cases').delete().eq('domain_id', domain_id).execute()
+        # Delete associated use cases first (use cases reference sector not domain_id)
+        db_manager.supabase.table('use_cases').delete().eq('sector', domain['name']).execute()
         
         # Delete the domain
-        result = db_manager.supabase.table('domains').delete().eq('id', domain_id).execute()
+        result = db_manager.supabase.table('sectors').delete().eq('id', domain_id).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Domain not found")
         
@@ -1979,10 +2023,10 @@ async def delete_domain(domain_id: str):
 
 @app.post("/domains/{domain_id}/copy")
 async def copy_domain(domain_id: str, copy_request: DomainCopyRequest):
-    """Copy a domain with all its use cases"""
+    """Copy a domain with all its use cases (from sectors table)"""
     try:
-        # Get the original domain
-        domain_result = db_manager.supabase.table('domains').select('*').eq('id', domain_id).execute()
+        # Get the original domain (from sectors)
+        domain_result = db_manager.supabase.table('sectors').select('*').eq('id', domain_id).execute()
         if not domain_result.data:
             raise HTTPException(status_code=404, detail="Domain not found")
         
@@ -1992,40 +2036,50 @@ async def copy_domain(domain_id: str, copy_request: DomainCopyRequest):
         new_domain_name = copy_request.name or f"{original_domain['name']} (Copy)"
         new_domain_data = {
             "name": new_domain_name,
-            "description": original_domain['description'],
-            "color": original_domain['color'],
-            "icon": original_domain['icon'],
+            "description": original_domain.get('description', ''),
+            "color": original_domain.get('color', '#3B82F6'),
+            "icon": original_domain.get('icon', 'folder'),
             "is_active": True,
             "document_count": 0
         }
         
-        new_domain_result = db_manager.supabase.table('domains').insert(new_domain_data).execute()
+        new_domain_result = db_manager.supabase.table('sectors').insert(new_domain_data).execute()
         if not new_domain_result.data:
             raise HTTPException(status_code=400, detail="Failed to create domain copy")
         
         new_domain = new_domain_result.data[0]
-        new_domain_id = str(new_domain['id'])
+        new_domain_name_str = new_domain['name']
         
-        # Get and copy all use cases
-        use_cases_result = db_manager.supabase.table('use_cases').select('*').eq('domain_id', domain_id).execute()
+        # Get and copy all use cases (use cases reference sector by name)
+        use_cases_result = db_manager.supabase.table('use_cases').select('*').eq('sector', original_domain['name']).execute()
         
         if use_cases_result.data:
             new_use_cases = []
             for use_case in use_cases_result.data:
                 new_use_case_data = {
                     "name": use_case['name'],
-                    "description": use_case['description'],
-                    "category": use_case['category'],
-                    "domain_id": new_domain_id,
-                    "is_active": True,
-                    "document_count": 0
+                    "description": use_case.get('description', ''),
+                    "sector": new_domain_name_str,  # use cases reference sector by name
+                    "is_active": True
                 }
                 new_use_cases.append(new_use_case_data)
             
             if new_use_cases:
                 db_manager.supabase.table('use_cases').insert(new_use_cases).execute()
         
-        return new_domain
+        # Transform response to domain format
+        domain_response = {
+            'id': new_domain['id'],
+            'name': new_domain['name'],
+            'description': new_domain.get('description', ''),
+            'color': new_domain.get('color', '#3B82F6'),
+            'icon': new_domain.get('icon', 'folder'),
+            'is_active': new_domain.get('is_active', True),
+            'document_count': new_domain.get('document_count', 0),
+            'created_at': new_domain.get('created_at', ''),
+            'updated_at': new_domain.get('updated_at', '')
+        }
+        return domain_response
     except HTTPException:
         raise
     except Exception as e:
@@ -2081,18 +2135,18 @@ async def get_use_case(use_case_id: str):
 async def create_use_case(use_case: UseCaseCreateRequest):
     """Create a new use case"""
     try:
-        # Verify domain exists
-        domain_result = db_manager.supabase.table('domains').select('id').eq('id', use_case.domain_id).execute()
+        # Verify domain exists (check sectors table)
+        domain_result = db_manager.supabase.table('sectors').select('name').eq('id', use_case.domain_id).execute()
         if not domain_result.data:
             raise HTTPException(status_code=400, detail="Domain not found")
+        
+        sector_name = domain_result.data[0]['name']
         
         use_case_data = {
             "name": use_case.name,
             "description": use_case.description,
-            "category": use_case.category,
-            "domain_id": use_case.domain_id,
-            "is_active": True,
-            "document_count": 0
+            "sector": sector_name,  # use cases reference sector by name
+            "is_active": True
         }
         
         result = db_manager.supabase.table('use_cases').insert(use_case_data).execute()
@@ -2115,11 +2169,14 @@ async def update_use_case(use_case_id: str, updates: UseCaseUpdateRequest):
         if not update_data:
             raise HTTPException(status_code=400, detail="No valid update data provided")
         
-        # If domain_id is being updated, verify it exists
+        # If domain_id is being updated, verify it exists and get sector name
         if 'domain_id' in update_data:
-            domain_result = db_manager.supabase.table('domains').select('id').eq('id', update_data['domain_id']).execute()
+            domain_result = db_manager.supabase.table('sectors').select('name').eq('id', update_data['domain_id']).execute()
             if not domain_result.data:
                 raise HTTPException(status_code=400, detail="Domain not found")
+            # Replace domain_id with sector name for the actual update
+            update_data['sector'] = domain_result.data[0]['name']
+            del update_data['domain_id']
         
         update_data["updated_at"] = datetime.now().isoformat()
         
@@ -2168,23 +2225,24 @@ async def copy_use_case(use_case_id: str, copy_request: UseCaseCopyRequest):
         
         original_use_case = use_case_result.data[0]
         
-        # Determine target domain
-        target_domain_id = copy_request.domain_id or original_use_case['domain_id']
+        # Determine target domain and sector
+        target_domain_id = copy_request.domain_id
+        target_sector_name = original_use_case['sector']  # Default to same sector
         
-        # Verify target domain exists
-        domain_result = db_manager.supabase.table('domains').select('id').eq('id', target_domain_id).execute()
-        if not domain_result.data:
-            raise HTTPException(status_code=400, detail="Target domain not found")
+        if target_domain_id:
+            # Verify target domain exists and get sector name
+            domain_result = db_manager.supabase.table('sectors').select('name').eq('id', target_domain_id).execute()
+            if not domain_result.data:
+                raise HTTPException(status_code=400, detail="Target domain not found")
+            target_sector_name = domain_result.data[0]['name']
         
         # Create new use case
         new_use_case_name = copy_request.name or f"{original_use_case['name']} (Copy)"
         new_use_case_data = {
             "name": new_use_case_name,
-            "description": original_use_case['description'],
-            "category": original_use_case['category'],
-            "domain_id": target_domain_id,
-            "is_active": True,
-            "document_count": 0
+            "description": original_use_case.get('description', ''),
+            "sector": target_sector_name,  # use cases reference sector by name
+            "is_active": True
         }
         
         result = db_manager.supabase.table('use_cases').insert(new_use_case_data).execute()
@@ -2202,14 +2260,16 @@ async def copy_use_case(use_case_id: str, copy_request: UseCaseCopyRequest):
 async def move_use_case(use_case_id: str, move_request: UseCaseMoveRequest):
     """Move a use case to a different domain"""
     try:
-        # Verify target domain exists
-        domain_result = db_manager.supabase.table('domains').select('id').eq('id', move_request.domain_id).execute()
+        # Verify target domain exists and get sector name
+        domain_result = db_manager.supabase.table('sectors').select('name').eq('id', move_request.domain_id).execute()
         if not domain_result.data:
             raise HTTPException(status_code=400, detail="Target domain not found")
         
-        # Update the use case's domain_id
+        target_sector_name = domain_result.data[0]['name']
+        
+        # Update the use case's sector
         update_data = {
-            "domain_id": move_request.domain_id,
+            "sector": target_sector_name,  # use cases reference sector by name
             "updated_at": datetime.now().isoformat()
         }
         
