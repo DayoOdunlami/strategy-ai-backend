@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS domains (
     color VARCHAR(7), -- hex color code like #ff0000
     icon VARCHAR(50), -- icon name or unicode
     is_active BOOLEAN DEFAULT true,
+    document_count INTEGER DEFAULT 0,
     sort_order INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -57,18 +58,23 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'domains' AND column_name = 'is_active') THEN
         ALTER TABLE domains ADD COLUMN is_active BOOLEAN DEFAULT true;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'domains' AND column_name = 'document_count') THEN
+        ALTER TABLE domains ADD COLUMN document_count INTEGER DEFAULT 0;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'domains' AND column_name = 'sort_order') THEN
         ALTER TABLE domains ADD COLUMN sort_order INTEGER DEFAULT 0;
     END IF;
 END $$;
 
--- 2. Use Cases table
+-- 2. Use Cases table (with domain_id foreign key for hierarchical relationship)
 CREATE TABLE IF NOT EXISTS use_cases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,
     description TEXT,
     category VARCHAR(50), -- Strategic, Operational, etc.
+    domain_id UUID REFERENCES domains(id) ON DELETE CASCADE,
     is_active BOOLEAN DEFAULT true,
+    document_count INTEGER DEFAULT 0,
     sort_order INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -88,15 +94,21 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'use_cases' AND column_name = 'category') THEN
         ALTER TABLE use_cases ADD COLUMN category VARCHAR(50);
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'use_cases' AND column_name = 'domain_id') THEN
+        ALTER TABLE use_cases ADD COLUMN domain_id UUID REFERENCES domains(id) ON DELETE CASCADE;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'use_cases' AND column_name = 'is_active') THEN
         ALTER TABLE use_cases ADD COLUMN is_active BOOLEAN DEFAULT true;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'use_cases' AND column_name = 'document_count') THEN
+        ALTER TABLE use_cases ADD COLUMN document_count INTEGER DEFAULT 0;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'use_cases' AND column_name = 'sort_order') THEN
         ALTER TABLE use_cases ADD COLUMN sort_order INTEGER DEFAULT 0;
     END IF;
 END $$;
 
--- 3. Prompt Templates table
+-- 3. Prompt Templates table (optional - for future use)
 CREATE TABLE IF NOT EXISTS prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(200) NOT NULL,
@@ -114,6 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_domains_name ON domains(name);
 CREATE INDEX IF NOT EXISTS idx_domains_active ON domains(is_active);
 CREATE INDEX IF NOT EXISTS idx_use_cases_name ON use_cases(name);
 CREATE INDEX IF NOT EXISTS idx_use_cases_category ON use_cases(category);
+CREATE INDEX IF NOT EXISTS idx_use_cases_domain_id ON use_cases(domain_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_templates_use_case ON prompt_templates(use_case_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_templates_domain ON prompt_templates(domain_id);
 
@@ -137,45 +150,57 @@ CREATE TRIGGER update_prompt_templates_updated_at BEFORE UPDATE ON prompt_templa
 
 -- 6. Insert existing hardcoded data
 INSERT INTO domains (name, description, color, icon) VALUES
-('AI & Technology', 'Machine Learning, AI systems, and emerging technologies', '#3B82F6', '🤖'),
-('Economics & Finance', 'Market analysis, financial planning, and economic policy', '#10B981', '💰'),
-('General', 'Cross-cutting topics and general strategy documents', '#6B7280', '📋'),
+('Rail & Transit', 'Railway infrastructure, stations, and transit systems', '#8B5CF6', '🚆'),
 ('Highway & Roads', 'Road infrastructure, traffic management, and highway systems', '#F59E0B', '🛣️'),
-('Rail & Transit', 'Railway infrastructure, stations, and transit systems', '#8B5CF6', '🚆')
+('Maritime', 'Ports, shipping, and maritime transportation systems', '#06B6D4', '⚓'),
+('AI & Technology', 'Machine Learning, AI systems, and emerging technologies', '#3B82F6', '🤖'),
+('General', 'Cross-cutting topics and general strategy documents', '#6B7280', '📋')
 ON CONFLICT (name) DO NOTHING;
 
--- Insert initial use cases
-INSERT INTO use_cases (name, description, category) VALUES
-('strategy', 'Strategic planning and high-level decision making', 'Strategic'),
-('general', 'General purpose analysis and research', 'General'),
-('quick-playbook', 'Quick reference and operational playbooks', 'Operational'),
-('lessons-learned', 'Historical analysis and knowledge capture', 'Knowledge'),
-('project-review', 'Project reviews and Ministry of Transport analysis', 'Assessment'),
-('trl-mapping', 'Technology Readiness Level and RIRL mapping', 'Analysis'),
-('project-similarity', 'Finding similar projects and comparative analysis', 'Analysis'),
-('change-management', 'Organizational change and transformation', 'Strategic'),
-('product-acceptance', 'Product validation and acceptance criteria', 'Assessment')
-ON CONFLICT (name) DO NOTHING;
+-- Get domain IDs for use case insertion
+DO $$
+DECLARE
+    rail_domain_id UUID;
+    highway_domain_id UUID;
+    maritime_domain_id UUID;
+    ai_domain_id UUID;
+    general_domain_id UUID;
+BEGIN
+    -- Get domain IDs
+    SELECT id INTO rail_domain_id FROM domains WHERE name = 'Rail & Transit';
+    SELECT id INTO highway_domain_id FROM domains WHERE name = 'Highway & Roads';
+    SELECT id INTO maritime_domain_id FROM domains WHERE name = 'Maritime';
+    SELECT id INTO ai_domain_id FROM domains WHERE name = 'AI & Technology';
+    SELECT id INTO general_domain_id FROM domains WHERE name = 'General';
 
--- Create domain-use case relationships (making strategy and general available for all domains)
-INSERT INTO domain_use_cases (domain_id, use_case_id, is_default)
-SELECT d.id, u.id, (u.name IN ('strategy', 'general')) as is_default
-FROM domains d
-CROSS JOIN use_cases u
-WHERE u.name IN ('strategy', 'general')
-ON CONFLICT (domain_id, use_case_id) DO NOTHING;
+    -- Insert use cases for Rail & Transit
+    INSERT INTO use_cases (name, description, category, domain_id) VALUES
+    ('Strategy Development', 'Strategic planning and high-level decision making', 'Strategic', rail_domain_id),
+    ('Infrastructure Planning', 'Plan and assess infrastructure projects', 'Operational', rail_domain_id),
+    ('Safety & Compliance', 'Safety protocols and regulatory compliance', 'Assessment', rail_domain_id)
+    ON CONFLICT (name) DO NOTHING;
 
--- Add other specific use case mappings
-INSERT INTO domain_use_cases (domain_id, use_case_id, is_default)
-SELECT d.id, u.id, false
-FROM domains d
-CROSS JOIN use_cases u
-WHERE (d.name = 'AI & Technology' AND u.name IN ('trl-mapping', 'product-acceptance'))
-   OR (d.name = 'Economics & Finance' AND u.name IN ('project-review', 'lessons-learned'))
-   OR (d.name = 'Highway & Roads' AND u.name IN ('project-similarity', 'change-management'))
-   OR (d.name = 'Rail & Transit' AND u.name IN ('quick-playbook', 'project-review'))
-ON CONFLICT (domain_id, use_case_id) DO NOTHING;
+    -- Insert use cases for Highway & Roads
+    INSERT INTO use_cases (name, description, category, domain_id) VALUES
+    ('Traffic Management', 'Optimize traffic flow and management systems', 'Operational', highway_domain_id),
+    ('Smart Infrastructure', 'IoT and smart road technologies', 'Strategic', highway_domain_id)
+    ON CONFLICT (name) DO NOTHING;
+
+    -- Insert use cases for Maritime
+    INSERT INTO use_cases (name, description, category, domain_id) VALUES
+    ('Port Operations', 'Harbor and port facility management', 'Operational', maritime_domain_id),
+    ('Shipping Analytics', 'Maritime logistics and shipping optimization', 'Analysis', maritime_domain_id)
+    ON CONFLICT (name) DO NOTHING;
+
+    -- Insert general use cases that can be used across domains
+    INSERT INTO use_cases (name, description, category, domain_id) VALUES
+    ('General Analysis', 'General purpose analysis and research', 'General', general_domain_id),
+    ('Project Review', 'Project reviews and assessments', 'Assessment', general_domain_id)
+    ON CONFLICT (name) DO NOTHING;
+END $$;
 
 -- 7. Verification queries (optional - for testing)
--- SELECT d.name as domain, COUNT(uc.id) as use_cases FROM domains d LEFT JOIN use_cases uc ON d.id = uc.domain_id GROUP BY d.id, d.name;
--- SELECT uc.name as use_case, COUNT(pt.id) as templates FROM use_cases uc LEFT JOIN prompt_templates pt ON uc.id = pt.use_case_id GROUP BY uc.id, uc.name; 
+-- Run these to verify the schema was created correctly:
+-- SELECT 'Domains' as table_name, COUNT(*) as record_count FROM domains;
+-- SELECT 'Use Cases' as table_name, COUNT(*) as record_count FROM use_cases;
+-- SELECT d.name as domain, COUNT(uc.id) as use_case_count FROM domains d LEFT JOIN use_cases uc ON d.id = uc.domain_id GROUP BY d.id, d.name ORDER BY d.name; 
