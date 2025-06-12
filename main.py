@@ -2145,8 +2145,8 @@ async def create_use_case(use_case: UseCaseCreateRequest):
         use_case_data = {
             "name": use_case.name,
             "description": use_case.description,
-            "sector": sector_name,  # use cases reference sector by name
-            "is_active": True
+            "sector": sector_name  # use cases reference sector by name
+            # Note: is_active column doesn't exist in use_cases table
         }
         
         result = db_manager.supabase.table('use_cases').insert(use_case_data).execute()
@@ -2241,8 +2241,8 @@ async def copy_use_case(use_case_id: str, copy_request: UseCaseCopyRequest):
         new_use_case_data = {
             "name": new_use_case_name,
             "description": original_use_case.get('description', ''),
-            "sector": target_sector_name,  # use cases reference sector by name
-            "is_active": True
+            "sector": target_sector_name  # use cases reference sector by name
+            # Note: is_active column doesn't exist in use_cases table
         }
         
         result = db_manager.supabase.table('use_cases').insert(new_use_case_data).execute()
