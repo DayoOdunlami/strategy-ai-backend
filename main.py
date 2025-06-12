@@ -1794,28 +1794,52 @@ class UseCaseMoveRequest(BaseModel):
 
 @app.get("/domains/with-use-cases")
 async def list_domains_with_use_cases():
-    """Get all domains with their associated use cases"""
+    """Get all domains (sectors) with their associated use cases"""
     try:
-        # Get all domains
-        domains_result = db_manager.supabase.table('domains').select('*').execute()
+        # Get all sectors (treat as domains)
+        sectors_result = db_manager.supabase.table('sectors').select('*').execute()
         
         # Get all use cases
         use_cases_result = db_manager.supabase.table('use_cases').select('*').execute()
         
-        # Group use cases by domain_id
-        use_cases_by_domain = {}
+        # Group use cases by sector
+        use_cases_by_sector = {}
         for use_case in use_cases_result.data:
-            domain_id = use_case.get('domain_id')
-            if domain_id:
-                if domain_id not in use_cases_by_domain:
-                    use_cases_by_domain[domain_id] = []
-                use_cases_by_domain[domain_id].append(use_case)
+            sector_name = use_case.get('sector')
+            if sector_name:
+                if sector_name not in use_cases_by_sector:
+                    use_cases_by_sector[sector_name] = []
+                # Transform use case to match expected format
+                transformed_use_case = {
+                    'id': use_case['id'],
+                    'name': use_case['name'],
+                    'description': use_case.get('description', ''),
+                    'category': 'General',  # Default category since not in schema
+                    'domain_id': sector_name,  # Use sector name as domain_id
+                    'is_active': True,
+                    'document_count': 0,  # Would need to calculate from documents table
+                    'created_at': use_case.get('created_at', ''),
+                    'updated_at': use_case.get('updated_at', '')
+                }
+                use_cases_by_sector[sector_name].append(transformed_use_case)
         
-        # Combine domains with their use cases
+        # Transform sectors to domains format
         domains_with_use_cases = []
-        for domain in domains_result.data:
-            domain_id = str(domain['id'])
-            domain['use_cases'] = use_cases_by_domain.get(domain_id, [])
+        for sector in sectors_result.data:
+            sector_name = sector['name']
+            # Transform sector to domain format
+            domain = {
+                'id': str(sector['id']),
+                'name': sector_name,
+                'description': sector.get('description', ''),
+                'color': '#3B82F6',  # Default color
+                'icon': '📋',  # Default icon
+                'is_active': True,
+                'document_count': 0,  # Would need to calculate
+                'created_at': sector.get('created_at', ''),
+                'updated_at': sector.get('created_at', ''),
+                'use_cases': use_cases_by_sector.get(sector_name, [])
+            }
             domains_with_use_cases.append(domain)
         
         return {
@@ -1828,10 +1852,25 @@ async def list_domains_with_use_cases():
 
 @app.get("/domains")
 async def list_domains():
-    """Get all domains"""
+    """Get all domains (sectors)"""
     try:
-        result = db_manager.supabase.table('domains').select('*').execute()
-        return {"domains": result.data}
+        result = db_manager.supabase.table('sectors').select('*').execute()
+        # Transform sectors to domains format
+        domains = []
+        for sector in result.data:
+            domain = {
+                'id': str(sector['id']),
+                'name': sector['name'],
+                'description': sector.get('description', ''),
+                'color': '#3B82F6',  # Default color
+                'icon': '📋',  # Default icon
+                'is_active': True,
+                'document_count': 0,  # Would need to calculate
+                'created_at': sector.get('created_at', ''),
+                'updated_at': sector.get('created_at', '')
+            }
+            domains.append(domain)
+        return {"domains": domains}
     except Exception as e:
         logging.error(f"Failed to fetch domains: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch domains: {str(e)}")
@@ -1981,14 +2020,30 @@ async def copy_domain(domain_id: str, copy_request: DomainCopyRequest):
 # Use Case endpoints
 @app.get("/use-cases")
 async def list_use_cases(domain_id: Optional[str] = None):
-    """Get all use cases, optionally filtered by domain"""
+    """Get all use cases, optionally filtered by domain (sector)"""
     try:
         query = db_manager.supabase.table('use_cases').select('*')
         if domain_id:
-            query = query.eq('domain_id', domain_id)
+            # domain_id in our API corresponds to sector name in existing schema
+            query = query.eq('sector', domain_id)
         
         result = query.execute()
-        return {"use_cases": result.data}
+        # Transform use cases to expected format
+        use_cases = []
+        for use_case in result.data:
+            transformed = {
+                'id': use_case['id'],
+                'name': use_case['name'],
+                'description': use_case.get('description', ''),
+                'category': 'General',  # Default since not in existing schema
+                'domain_id': use_case.get('sector', ''),
+                'is_active': True,
+                'document_count': 0,  # Would need to calculate
+                'created_at': use_case.get('created_at', ''),
+                'updated_at': use_case.get('updated_at', '')
+            }
+            use_cases.append(transformed)
+        return {"use_cases": use_cases}
     except Exception as e:
         logging.error(f"Failed to fetch use cases: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch use cases: {str(e)}")
