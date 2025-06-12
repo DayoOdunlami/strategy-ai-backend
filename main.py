@@ -1753,6 +1753,408 @@ async def analyze_document_for_chunking(
         )
 
 # ============================================================================
+# DOMAIN AND USE CASE MANAGEMENT ENDPOINTS
+# ============================================================================
+
+class DomainCreateRequest(BaseModel):
+    name: str
+    description: str
+    color: str
+    icon: str
+
+class DomainUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class UseCaseCreateRequest(BaseModel):
+    name: str
+    description: str
+    category: str
+    domain_id: str
+
+class UseCaseUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    domain_id: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class DomainCopyRequest(BaseModel):
+    name: Optional[str] = None
+
+class UseCaseCopyRequest(BaseModel):
+    domain_id: Optional[str] = None
+    name: Optional[str] = None
+
+class UseCaseMoveRequest(BaseModel):
+    domain_id: str
+
+@app.get("/domains/with-use-cases")
+async def list_domains_with_use_cases():
+    """Get all domains with their associated use cases"""
+    try:
+        # Get all domains
+        domains_result = db_manager.supabase.table('domains').select('*').execute()
+        
+        # Get all use cases
+        use_cases_result = db_manager.supabase.table('use_cases').select('*').execute()
+        
+        # Group use cases by domain_id
+        use_cases_by_domain = {}
+        for use_case in use_cases_result.data:
+            domain_id = use_case.get('domain_id')
+            if domain_id:
+                if domain_id not in use_cases_by_domain:
+                    use_cases_by_domain[domain_id] = []
+                use_cases_by_domain[domain_id].append(use_case)
+        
+        # Combine domains with their use cases
+        domains_with_use_cases = []
+        for domain in domains_result.data:
+            domain_id = str(domain['id'])
+            domain['use_cases'] = use_cases_by_domain.get(domain_id, [])
+            domains_with_use_cases.append(domain)
+        
+        return {
+            "domains": domains_with_use_cases,
+            "total_count": len(domains_with_use_cases)
+        }
+    except Exception as e:
+        logging.error(f"Failed to fetch domains with use cases: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch domains: {str(e)}")
+
+@app.get("/domains")
+async def list_domains():
+    """Get all domains"""
+    try:
+        result = db_manager.supabase.table('domains').select('*').execute()
+        return {"domains": result.data}
+    except Exception as e:
+        logging.error(f"Failed to fetch domains: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch domains: {str(e)}")
+
+@app.get("/domains/{domain_id}")
+async def get_domain(domain_id: str):
+    """Get a specific domain"""
+    try:
+        result = db_manager.supabase.table('domains').select('*').eq('id', domain_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to fetch domain {domain_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch domain: {str(e)}")
+
+@app.post("/domains")
+async def create_domain(domain: DomainCreateRequest):
+    """Create a new domain"""
+    try:
+        domain_data = {
+            "name": domain.name,
+            "description": domain.description,
+            "color": domain.color,
+            "icon": domain.icon,
+            "is_active": True,
+            "document_count": 0
+        }
+        
+        result = db_manager.supabase.table('domains').insert(domain_data).execute()
+        if not result.data:
+            raise HTTPException(status_code=400, detail="Failed to create domain")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to create domain: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create domain: {str(e)}")
+
+@app.put("/domains/{domain_id}")
+async def update_domain(domain_id: str, updates: DomainUpdateRequest):
+    """Update a domain"""
+    try:
+        # Only include non-None values in the update
+        update_data = {k: v for k, v in updates.dict().items() if v is not None}
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No valid update data provided")
+        
+        update_data["updated_at"] = datetime.now().isoformat()
+        
+        result = db_manager.supabase.table('domains').update(update_data).eq('id', domain_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to update domain {domain_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update domain: {str(e)}")
+
+@app.delete("/domains/{domain_id}")
+async def delete_domain(domain_id: str):
+    """Delete a domain (only if no documents are linked)"""
+    try:
+        # Check if domain has documents
+        domain_result = db_manager.supabase.table('domains').select('document_count').eq('id', domain_id).execute()
+        if not domain_result.data:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        
+        domain = domain_result.data[0]
+        if domain.get('document_count', 0) > 0:
+            raise HTTPException(status_code=400, detail="Cannot delete domain with linked documents")
+        
+        # Delete associated use cases first
+        db_manager.supabase.table('use_cases').delete().eq('domain_id', domain_id).execute()
+        
+        # Delete the domain
+        result = db_manager.supabase.table('domains').delete().eq('id', domain_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        
+        return {"success": True, "message": "Domain deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to delete domain {domain_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete domain: {str(e)}")
+
+@app.post("/domains/{domain_id}/copy")
+async def copy_domain(domain_id: str, copy_request: DomainCopyRequest):
+    """Copy a domain with all its use cases"""
+    try:
+        # Get the original domain
+        domain_result = db_manager.supabase.table('domains').select('*').eq('id', domain_id).execute()
+        if not domain_result.data:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        
+        original_domain = domain_result.data[0]
+        
+        # Create new domain
+        new_domain_name = copy_request.name or f"{original_domain['name']} (Copy)"
+        new_domain_data = {
+            "name": new_domain_name,
+            "description": original_domain['description'],
+            "color": original_domain['color'],
+            "icon": original_domain['icon'],
+            "is_active": True,
+            "document_count": 0
+        }
+        
+        new_domain_result = db_manager.supabase.table('domains').insert(new_domain_data).execute()
+        if not new_domain_result.data:
+            raise HTTPException(status_code=400, detail="Failed to create domain copy")
+        
+        new_domain = new_domain_result.data[0]
+        new_domain_id = str(new_domain['id'])
+        
+        # Get and copy all use cases
+        use_cases_result = db_manager.supabase.table('use_cases').select('*').eq('domain_id', domain_id).execute()
+        
+        if use_cases_result.data:
+            new_use_cases = []
+            for use_case in use_cases_result.data:
+                new_use_case_data = {
+                    "name": use_case['name'],
+                    "description": use_case['description'],
+                    "category": use_case['category'],
+                    "domain_id": new_domain_id,
+                    "is_active": True,
+                    "document_count": 0
+                }
+                new_use_cases.append(new_use_case_data)
+            
+            if new_use_cases:
+                db_manager.supabase.table('use_cases').insert(new_use_cases).execute()
+        
+        return new_domain
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to copy domain {domain_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to copy domain: {str(e)}")
+
+# Use Case endpoints
+@app.get("/use-cases")
+async def list_use_cases(domain_id: Optional[str] = None):
+    """Get all use cases, optionally filtered by domain"""
+    try:
+        query = db_manager.supabase.table('use_cases').select('*')
+        if domain_id:
+            query = query.eq('domain_id', domain_id)
+        
+        result = query.execute()
+        return {"use_cases": result.data}
+    except Exception as e:
+        logging.error(f"Failed to fetch use cases: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch use cases: {str(e)}")
+
+@app.get("/use-cases/{use_case_id}")
+async def get_use_case(use_case_id: str):
+    """Get a specific use case"""
+    try:
+        result = db_manager.supabase.table('use_cases').select('*').eq('id', use_case_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Use case not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to fetch use case {use_case_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch use case: {str(e)}")
+
+@app.post("/use-cases")
+async def create_use_case(use_case: UseCaseCreateRequest):
+    """Create a new use case"""
+    try:
+        # Verify domain exists
+        domain_result = db_manager.supabase.table('domains').select('id').eq('id', use_case.domain_id).execute()
+        if not domain_result.data:
+            raise HTTPException(status_code=400, detail="Domain not found")
+        
+        use_case_data = {
+            "name": use_case.name,
+            "description": use_case.description,
+            "category": use_case.category,
+            "domain_id": use_case.domain_id,
+            "is_active": True,
+            "document_count": 0
+        }
+        
+        result = db_manager.supabase.table('use_cases').insert(use_case_data).execute()
+        if not result.data:
+            raise HTTPException(status_code=400, detail="Failed to create use case")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to create use case: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create use case: {str(e)}")
+
+@app.put("/use-cases/{use_case_id}")
+async def update_use_case(use_case_id: str, updates: UseCaseUpdateRequest):
+    """Update a use case"""
+    try:
+        # Only include non-None values in the update
+        update_data = {k: v for k, v in updates.dict().items() if v is not None}
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No valid update data provided")
+        
+        # If domain_id is being updated, verify it exists
+        if 'domain_id' in update_data:
+            domain_result = db_manager.supabase.table('domains').select('id').eq('id', update_data['domain_id']).execute()
+            if not domain_result.data:
+                raise HTTPException(status_code=400, detail="Domain not found")
+        
+        update_data["updated_at"] = datetime.now().isoformat()
+        
+        result = db_manager.supabase.table('use_cases').update(update_data).eq('id', use_case_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Use case not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to update use case {use_case_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update use case: {str(e)}")
+
+@app.delete("/use-cases/{use_case_id}")
+async def delete_use_case(use_case_id: str):
+    """Delete a use case (only if no documents are linked)"""
+    try:
+        # Check if use case has documents
+        use_case_result = db_manager.supabase.table('use_cases').select('document_count').eq('id', use_case_id).execute()
+        if not use_case_result.data:
+            raise HTTPException(status_code=404, detail="Use case not found")
+        
+        use_case = use_case_result.data[0]
+        if use_case.get('document_count', 0) > 0:
+            raise HTTPException(status_code=400, detail="Cannot delete use case with linked documents")
+        
+        result = db_manager.supabase.table('use_cases').delete().eq('id', use_case_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Use case not found")
+        
+        return {"success": True, "message": "Use case deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to delete use case {use_case_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete use case: {str(e)}")
+
+@app.post("/use-cases/{use_case_id}/copy")
+async def copy_use_case(use_case_id: str, copy_request: UseCaseCopyRequest):
+    """Copy a use case to the same or different domain"""
+    try:
+        # Get the original use case
+        use_case_result = db_manager.supabase.table('use_cases').select('*').eq('id', use_case_id).execute()
+        if not use_case_result.data:
+            raise HTTPException(status_code=404, detail="Use case not found")
+        
+        original_use_case = use_case_result.data[0]
+        
+        # Determine target domain
+        target_domain_id = copy_request.domain_id or original_use_case['domain_id']
+        
+        # Verify target domain exists
+        domain_result = db_manager.supabase.table('domains').select('id').eq('id', target_domain_id).execute()
+        if not domain_result.data:
+            raise HTTPException(status_code=400, detail="Target domain not found")
+        
+        # Create new use case
+        new_use_case_name = copy_request.name or f"{original_use_case['name']} (Copy)"
+        new_use_case_data = {
+            "name": new_use_case_name,
+            "description": original_use_case['description'],
+            "category": original_use_case['category'],
+            "domain_id": target_domain_id,
+            "is_active": True,
+            "document_count": 0
+        }
+        
+        result = db_manager.supabase.table('use_cases').insert(new_use_case_data).execute()
+        if not result.data:
+            raise HTTPException(status_code=400, detail="Failed to create use case copy")
+        
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to copy use case {use_case_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to copy use case: {str(e)}")
+
+@app.put("/use-cases/{use_case_id}/move")
+async def move_use_case(use_case_id: str, move_request: UseCaseMoveRequest):
+    """Move a use case to a different domain"""
+    try:
+        # Verify target domain exists
+        domain_result = db_manager.supabase.table('domains').select('id').eq('id', move_request.domain_id).execute()
+        if not domain_result.data:
+            raise HTTPException(status_code=400, detail="Target domain not found")
+        
+        # Update the use case's domain_id
+        update_data = {
+            "domain_id": move_request.domain_id,
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        result = db_manager.supabase.table('use_cases').update(update_data).eq('id', use_case_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Use case not found")
+        
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to move use case {use_case_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to move use case: {str(e)}")
+
+# ============================================================================
 # RESPONSE MODELS
 # ============================================================================
 
