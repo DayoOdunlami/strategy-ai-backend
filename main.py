@@ -204,6 +204,15 @@ try:
                 logging.error(f"Failed to update document status: {e}")
                 return False
 
+        async def update_document_fields(self, document_id: str, update_data: dict) -> bool:
+            try:
+                update_data['updated_at'] = datetime.now().isoformat()
+                self.supabase.table('documents').update(update_data).eq('id', document_id).execute()
+                return True
+            except Exception as e:
+                logging.error(f"Failed to update document fields: {e}")
+                return False
+
         # Add other required methods with simple implementations
         async def get_document_count(self): return 42
         async def get_sector_count(self): return 4
