@@ -87,6 +87,15 @@ class DocumentListResponse(BaseModel):
     offset: int
     has_more: bool
 
+class DocumentUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    sector: Optional[str] = None
+    use_case: Optional[str] = None
+    tags: Optional[str] = None
+    status: Optional[str] = None
+    # Add other fields as needed
+
 # ============================================================================
 # SEARCH MODELS
 # ============================================================================

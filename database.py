@@ -310,5 +310,14 @@ class DatabaseManager:
             "storage_usage": {"documents": len(docs), "feedback": len(self.mock_data["feedback"])}
         }
 
+    async def update_document_fields(self, document_id: str, update_data: dict) -> bool:
+        try:
+            update_data['updated_at'] = datetime.now().isoformat()
+            self.supabase.table('documents').update(update_data).eq('id', document_id).execute()
+            return True
+        except Exception as e:
+            logging.error(f"Failed to update document fields: {e}")
+            return False
+
 # Global database manager instance
 db_manager = DatabaseManager() 

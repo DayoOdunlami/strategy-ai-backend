@@ -47,7 +47,8 @@ try:
         ChatMessage, ChatResponse, DocumentUpload,
         UserFeedback, FeedbackResponse, SearchResult, SearchResponse,
         AgentResponse, AgentRequest, OrchestrationResponse,
-        DocumentResponse as RichDocumentResponse  # Import rich model for Option B
+        DocumentResponse as RichDocumentResponse,  # Import rich model for Option B
+        DocumentUpdateRequest  # Added import for DocumentUpdateRequest
     )
     models_available = True
     logging.info("✅ Models imported successfully")
@@ -1255,6 +1256,21 @@ async def get_document_chunks(document_id: str):
     except Exception as e:
         logger.error(f"Error retrieving chunks for document {document_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve chunks: {str(e)}")
+
+@app.patch("/documents/{document_id}")
+async def update_document(document_id: str, updates: DocumentUpdateRequest):
+    document = await db_manager.get_document(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    update_data = {k: v for k, v in updates.dict(exclude_unset=True).items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    success = await db_manager.update_document_fields(document_id, update_data)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update document")
+    return {"success": True, "updated_fields": list(update_data.keys())}
 
 # ============================================================================
 # SEARCH ENDPOINTS  
