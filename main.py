@@ -621,7 +621,11 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://strategy-ai-frontend-5ptbjcrl3-dayoodunlamis-projects.vercel.app"],
+    allow_origins=[
+        # TODO: Restrict to production domain before go-live
+        "https://strategy-ai-frontend-5ptbjcrl3-dayoodunlamis-projects.vercel.app",
+        "https://strategy-ai-frontend-ogvwoy2nd-dayoodunlamis-projects.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
